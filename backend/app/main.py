@@ -1,12 +1,13 @@
 from fastapi import FastAPI
 
+from app.core.config import APP_NAME, APP_VERSION
 from app.routes.chat import router as chat_router
 
 
 app = FastAPI(
-    title="Nova AI Workspace",
+    title=APP_NAME,
     description="Building a personal AI platform from scratch",
-    version="0.2.0"
+    version=APP_VERSION
 )
 
 

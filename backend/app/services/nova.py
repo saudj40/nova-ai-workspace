@@ -1,2 +1,8 @@
+from app.providers.ollama import OllamaProvider
+
+
+provider = OllamaProvider()
+
+
 def generate_response(message: str) -> str:
-    return f"Nova received your message: {message}"
+    return provider.generate(message)
