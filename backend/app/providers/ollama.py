@@ -2,17 +2,27 @@ import requests
 
 from app.core.config import OLLAMA_HOST, OLLAMA_MODEL
 from app.providers.base import AIProvider
+from app.prompts.system_prompt import SYSTEM_PROMPT
 
 
 class OllamaProvider(AIProvider):
 
     def generate(self, message: str) -> str:
 
-        url = f"{OLLAMA_HOST}/api/generate"
+        url = f"{OLLAMA_HOST}/api/chat"
 
         payload = {
             "model": OLLAMA_MODEL,
-            "prompt": message,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT
+                },
+                {
+                    "role": "user",
+                    "content": message
+                }
+            ],
             "stream": False
         }
 
@@ -26,4 +36,4 @@ class OllamaProvider(AIProvider):
 
         data = response.json()
 
-        return data["response"]
+        return data["message"]["content"]
