@@ -2,12 +2,16 @@ import { motion } from "framer-motion";
 import {
   ArrowUp,
   CornerDownLeft,
-  LoaderCircle,
   Sparkles,
+  Square,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-function ChatInput({ onSend, isLoading }) {
+function ChatInput({
+  onSend,
+  onStop,
+  isLoading,
+}) {
   const [input, setInput] = useState("");
   const textareaRef = useRef(null);
 
@@ -19,7 +23,10 @@ function ChatInput({ onSend, isLoading }) {
     }
 
     textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 170)}px`;
+    textarea.style.height = `${Math.min(
+      textarea.scrollHeight,
+      170
+    )}px`;
   }, [input]);
 
   function submitMessage() {
@@ -34,7 +41,10 @@ function ChatInput({ onSend, isLoading }) {
   }
 
   function handleKeyDown(event) {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
       event.preventDefault();
       submitMessage();
     }
@@ -59,57 +69,89 @@ function ChatInput({ onSend, isLoading }) {
         }}
       >
         <div className="composer-brand">
-          <Sparkles size={17} strokeWidth={1.8} />
+          <Sparkles
+            size={17}
+            strokeWidth={1.8}
+          />
         </div>
 
         <textarea
           ref={textareaRef}
           value={input}
-          onChange={(event) => setInput(event.target.value)}
+          onChange={(event) =>
+            setInput(event.target.value)
+          }
           onKeyDown={handleKeyDown}
-          placeholder="Ask Nova anything..."
+          placeholder={
+            isLoading
+              ? "Nova is responding..."
+              : "Ask Nova anything..."
+          }
           rows="1"
           disabled={isLoading}
           aria-label="Message Nova"
         />
 
         <div className="composer-actions">
-          <div className="keyboard-hint">
-            <CornerDownLeft size={13} />
-            <span>Enter</span>
-          </div>
+          {!isLoading && (
+            <div className="keyboard-hint">
+              <CornerDownLeft size={13} />
+              <span>Enter</span>
+            </div>
+          )}
 
-          <motion.button
-            className="send-button"
-            onClick={submitMessage}
-            disabled={!input.trim() || isLoading}
-            aria-label="Send message"
-            whileHover={
-              input.trim() && !isLoading
-                ? {
-                    scale: 1.04,
-                  }
-                : undefined
-            }
-            whileTap={
-              input.trim() && !isLoading
-                ? {
-                    scale: 0.94,
-                  }
-                : undefined
-            }
-          >
-            {isLoading ? (
-              <LoaderCircle className="spinner" size={18} />
-            ) : (
-              <ArrowUp size={18} strokeWidth={2.2} />
-            )}
-          </motion.button>
+          {isLoading ? (
+            <motion.button
+              className="send-button stop-button"
+              onClick={onStop}
+              aria-label="Stop generation"
+              title="Stop generation"
+              whileHover={{
+                scale: 1.04,
+              }}
+              whileTap={{
+                scale: 0.92,
+              }}
+            >
+              <Square
+                size={15}
+                strokeWidth={2.4}
+                fill="currentColor"
+              />
+            </motion.button>
+          ) : (
+            <motion.button
+              className="send-button"
+              onClick={submitMessage}
+              disabled={!input.trim()}
+              aria-label="Send message"
+              whileHover={
+                input.trim()
+                  ? {
+                      scale: 1.04,
+                    }
+                  : undefined
+              }
+              whileTap={
+                input.trim()
+                  ? {
+                      scale: 0.94,
+                    }
+                  : undefined
+              }
+            >
+              <ArrowUp
+                size={18}
+                strokeWidth={2.2}
+              />
+            </motion.button>
+          )}
         </div>
       </motion.div>
 
       <p className="input-hint">
-        Nova can make mistakes. Verify important information.
+        Nova can make mistakes. Verify important
+        information.
       </p>
     </div>
   );

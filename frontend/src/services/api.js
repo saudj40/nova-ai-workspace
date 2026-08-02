@@ -1,23 +1,32 @@
 const API_URL =
-  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+  import.meta.env.VITE_API_URL ||
+  "http://127.0.0.1:8000";
 
 
 function createSmoothWriter(onChunk) {
   let buffer = "";
   let streamFinished = false;
+  let cancelled = false;
   let animationFrameId = null;
   let resolveFinished;
+  let hasResolved = false;
 
-  const finishedPromise = new Promise((resolve) => {
-    resolveFinished = resolve;
-  });
+  const finishedPromise = new Promise(
+    (resolve) => {
+      resolveFinished = resolve;
+    }
+  );
+
+  function resolveOnce() {
+    if (hasResolved) {
+      return;
+    }
+
+    hasResolved = true;
+    resolveFinished();
+  }
 
   function getCharactersPerFrame() {
-    /*
-      Keep short responses smooth while automatically
-      accelerating when many characters are waiting.
-    */
-
     if (buffer.length > 1200) {
       return 20;
     }
@@ -38,6 +47,12 @@ function createSmoothWriter(onChunk) {
   }
 
   function animate() {
+    if (cancelled) {
+      animationFrameId = null;
+      resolveOnce();
+      return;
+    }
+
     if (buffer.length > 0) {
       const charactersToWrite =
         getCharactersPerFrame();
@@ -47,14 +62,19 @@ function createSmoothWriter(onChunk) {
         charactersToWrite
       );
 
-      buffer = buffer.slice(charactersToWrite);
+      buffer = buffer.slice(
+        charactersToWrite
+      );
 
       onChunk(visibleText);
     }
 
-    if (streamFinished && buffer.length === 0) {
+    if (
+      streamFinished &&
+      buffer.length === 0
+    ) {
       animationFrameId = null;
-      resolveFinished();
+      resolveOnce();
       return;
     }
 
@@ -63,7 +83,10 @@ function createSmoothWriter(onChunk) {
   }
 
   function startAnimation() {
-    if (animationFrameId !== null) {
+    if (
+      animationFrameId !== null ||
+      cancelled
+    ) {
       return;
     }
 
@@ -73,7 +96,7 @@ function createSmoothWriter(onChunk) {
 
   return {
     push(text) {
-      if (!text) {
+      if (!text || cancelled) {
         return;
       }
 
@@ -82,8 +105,27 @@ function createSmoothWriter(onChunk) {
     },
 
     finish() {
+      if (cancelled) {
+        return;
+      }
+
       streamFinished = true;
       startAnimation();
+    },
+
+    cancel() {
+      cancelled = true;
+      buffer = "";
+
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(
+          animationFrameId
+        );
+
+        animationFrameId = null;
+      }
+
+      resolveOnce();
     },
 
     waitUntilFinished() {
@@ -96,22 +138,32 @@ function createSmoothWriter(onChunk) {
 export async function streamMessage(
   message,
   conversationId,
-  onChunk
+  onChunk,
+  signal
 ) {
   let response;
+  let smoothWriter;
 
   try {
-    response = await fetch(`${API_URL}/chat/stream`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        message,
-        conversation_id: conversationId,
-      }),
-    });
-  } catch {
+    response = await fetch(
+      `${API_URL}/chat/stream`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message,
+          conversation_id: conversationId,
+        }),
+        signal,
+      }
+    );
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw error;
+    }
+
     throw new Error(
       "Cannot connect to Nova's backend. Make sure FastAPI is running."
     );
@@ -122,7 +174,8 @@ export async function streamMessage(
       "Nova encountered an unexpected error.";
 
     try {
-      const errorData = await response.json();
+      const errorData =
+        await response.json();
 
       errorMessage =
         errorData.detail || errorMessage;
@@ -142,20 +195,40 @@ export async function streamMessage(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
 
-  const smoothWriter =
+  smoothWriter =
     createSmoothWriter(onChunk);
+
+  function handleAbort() {
+    smoothWriter.cancel();
+
+    reader.cancel().catch(() => {
+      // Reader may already be closed.
+    });
+  }
+
+  signal?.addEventListener(
+    "abort",
+    handleAbort,
+    {
+      once: true,
+    }
+  );
 
   try {
     while (true) {
-      const { value, done } = await reader.read();
+      const { value, done } =
+        await reader.read();
 
       if (done) {
         break;
       }
 
-      const receivedText = decoder.decode(value, {
-        stream: true,
-      });
+      const receivedText = decoder.decode(
+        value,
+        {
+          stream: true,
+        }
+      );
 
       smoothWriter.push(receivedText);
     }
@@ -166,8 +239,33 @@ export async function streamMessage(
     smoothWriter.finish();
 
     await smoothWriter.waitUntilFinished();
+  } catch (error) {
+    smoothWriter.cancel();
+
+    if (
+      error.name === "AbortError" ||
+      signal?.aborted
+    ) {
+      const abortError = new DOMException(
+        "Generation stopped",
+        "AbortError"
+      );
+
+      throw abortError;
+    }
+
+    throw error;
   } finally {
-    reader.releaseLock();
+    signal?.removeEventListener(
+      "abort",
+      handleAbort
+    );
+
+    try {
+      reader.releaseLock();
+    } catch {
+      // Reader may already be cancelled.
+    }
   }
 }
 
@@ -197,12 +295,13 @@ export async function deleteConversation(
       "Could not delete the conversation from Nova.";
 
     try {
-      const errorData = await response.json();
+      const errorData =
+        await response.json();
 
       errorMessage =
         errorData.detail || errorMessage;
     } catch {
-      // Successful DELETE responses have no JSON body.
+      // Successful DELETE responses have no body.
     }
 
     throw new Error(errorMessage);

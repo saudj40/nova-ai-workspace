@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import {
   Menu,
   PanelLeftClose,
@@ -37,13 +42,15 @@ function createNewChat() {
 
 function loadChats() {
   try {
-    const savedChats = localStorage.getItem(STORAGE_KEY);
+    const savedChats =
+      localStorage.getItem(STORAGE_KEY);
 
     if (!savedChats) {
       return [createNewChat()];
     }
 
-    const parsedChats = JSON.parse(savedChats);
+    const parsedChats =
+      JSON.parse(savedChats);
 
     if (
       !Array.isArray(parsedChats) ||
@@ -60,20 +67,38 @@ function loadChats() {
 
 
 function App() {
-  const initialChatsRef = useRef(loadChats());
-  const conversationAreaRef = useRef(null);
+  const initialChatsRef =
+    useRef(loadChats());
+
+  const conversationAreaRef =
+    useRef(null);
+
+  const abortControllerRef =
+    useRef(null);
+
+  const activeAssistantIdRef =
+    useRef(null);
+
+  const activeGenerationChatIdRef =
+    useRef(null);
 
   const [chats, setChats] = useState(
     initialChatsRef.current
   );
 
-  const [activeChatId, setActiveChatId] = useState(() => {
+  const [
+    activeChatId,
+    setActiveChatId,
+  ] = useState(() => {
     const savedActiveChatId =
-      localStorage.getItem(ACTIVE_CHAT_KEY);
+      localStorage.getItem(
+        ACTIVE_CHAT_KEY
+      );
 
     const savedChatExists =
       initialChatsRef.current.some(
-        (chat) => chat.id === savedActiveChatId
+        (chat) =>
+          chat.id === savedActiveChatId
       );
 
     return savedChatExists
@@ -81,14 +106,21 @@ function App() {
       : initialChatsRef.current[0].id;
   });
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isLoading, setIsLoading] =
+    useState(false);
+
+  const [
+    sidebarOpen,
+    setSidebarOpen,
+  ] = useState(true);
 
   const activeChat =
-    chats.find((chat) => chat.id === activeChatId) ||
-    chats[0];
+    chats.find(
+      (chat) => chat.id === activeChatId
+    ) || chats[0];
 
-  const messages = activeChat?.messages || [];
+  const messages =
+    activeChat?.messages || [];
 
 
   useEffect(() => {
@@ -124,7 +156,17 @@ function App() {
   }, [messages, isLoading]);
 
 
-  function updateChatMessages(chatId, updater) {
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+
+  function updateChatMessages(
+    chatId,
+    updater
+  ) {
     setChats((currentChats) =>
       currentChats.map((chat) => {
         if (chat.id !== chatId) {
@@ -133,8 +175,11 @@ function App() {
 
         return {
           ...chat,
-          messages: updater(chat.messages),
-          updatedAt: new Date().toISOString(),
+          messages: updater(
+            chat.messages
+          ),
+          updatedAt:
+            new Date().toISOString(),
         };
       })
     );
@@ -142,7 +187,8 @@ function App() {
 
 
   async function handleSend(message) {
-    const trimmedMessage = message.trim();
+    const trimmedMessage =
+      message.trim();
 
     if (
       !trimmedMessage ||
@@ -152,7 +198,8 @@ function App() {
       return;
     }
 
-    const targetChatId = activeChat.id;
+    const targetChatId =
+      activeChat.id;
 
     const userMessage = {
       id: crypto.randomUUID(),
@@ -169,6 +216,18 @@ function App() {
       content: "",
     };
 
+    const controller =
+      new AbortController();
+
+    abortControllerRef.current =
+      controller;
+
+    activeAssistantIdRef.current =
+      assistantMessageId;
+
+    activeGenerationChatIdRef.current =
+      targetChatId;
+
     setChats((currentChats) =>
       currentChats.map((chat) => {
         if (chat.id !== targetChatId) {
@@ -176,12 +235,16 @@ function App() {
         }
 
         const shouldCreateTitle =
-          chat.title === "New conversation" &&
+          chat.title ===
+            "New conversation" &&
           chat.messages.length === 0;
 
         const generatedTitle =
           trimmedMessage.length > 32
-            ? `${trimmedMessage.slice(0, 32)}...`
+            ? `${trimmedMessage.slice(
+                0,
+                32
+              )}...`
             : trimmedMessage;
 
         return {
@@ -194,7 +257,8 @@ function App() {
             userMessage,
             assistantMessage,
           ],
-          updatedAt: new Date().toISOString(),
+          updatedAt:
+            new Date().toISOString(),
         };
       })
     );
@@ -222,26 +286,72 @@ function App() {
                     : currentMessage
               )
           );
-        }
+        },
+        controller.signal
       );
     } catch (error) {
-      updateChatMessages(
-        targetChatId,
-        (currentMessages) =>
-          currentMessages.map(
-            (currentMessage) =>
-              currentMessage.id === assistantMessageId
-                ? {
-                    ...currentMessage,
-                    content:
-                      `**Connection error:** ${error.message}`,
-                  }
-                : currentMessage
-          )
-      );
+      if (error.name === "AbortError") {
+        updateChatMessages(
+          targetChatId,
+          (currentMessages) =>
+            currentMessages.map(
+              (currentMessage) => {
+                if (
+                  currentMessage.id !==
+                  assistantMessageId
+                ) {
+                  return currentMessage;
+                }
+
+                const existingContent =
+                  currentMessage.content.trim();
+
+                return {
+                  ...currentMessage,
+                  content: existingContent
+                    ? `${currentMessage.content}\n\n*Generation stopped.*`
+                    : "*Generation stopped.*",
+                };
+              }
+            )
+        );
+      } else {
+        updateChatMessages(
+          targetChatId,
+          (currentMessages) =>
+            currentMessages.map(
+              (currentMessage) =>
+                currentMessage.id ===
+                assistantMessageId
+                  ? {
+                      ...currentMessage,
+                      content:
+                        `**Connection error:** ${error.message}`,
+                    }
+                  : currentMessage
+            )
+        );
+      }
     } finally {
+      abortControllerRef.current = null;
+      activeAssistantIdRef.current = null;
+      activeGenerationChatIdRef.current =
+        null;
+
       setIsLoading(false);
     }
+  }
+
+
+  function handleStopGeneration() {
+    if (
+      !isLoading ||
+      !abortControllerRef.current
+    ) {
+      return;
+    }
+
+    abortControllerRef.current.abort();
   }
 
 
@@ -250,12 +360,17 @@ function App() {
       return;
     }
 
-    const emptyExistingChat = chats.find(
-      (chat) => chat.messages.length === 0
-    );
+    const emptyExistingChat =
+      chats.find(
+        (chat) =>
+          chat.messages.length === 0
+      );
 
     if (emptyExistingChat) {
-      setActiveChatId(emptyExistingChat.id);
+      setActiveChatId(
+        emptyExistingChat.id
+      );
+
       return;
     }
 
@@ -285,7 +400,8 @@ function App() {
     }
 
     const chat = chats.find(
-      (currentChat) => currentChat.id === chatId
+      (currentChat) =>
+        currentChat.id === chatId
     );
 
     if (!chat) {
@@ -297,42 +413,49 @@ function App() {
       chat.title
     );
 
-    const trimmedTitle = newTitle?.trim();
+    const trimmedTitle =
+      newTitle?.trim();
 
     if (!trimmedTitle) {
       return;
     }
 
     setChats((currentChats) =>
-      currentChats.map((currentChat) =>
-        currentChat.id === chatId
-          ? {
-              ...currentChat,
-              title: trimmedTitle,
-              updatedAt: new Date().toISOString(),
-            }
-          : currentChat
+      currentChats.map(
+        (currentChat) =>
+          currentChat.id === chatId
+            ? {
+                ...currentChat,
+                title: trimmedTitle,
+                updatedAt:
+                  new Date().toISOString(),
+              }
+            : currentChat
       )
     );
   }
 
 
-  async function handleDeleteChat(chatId) {
+  async function handleDeleteChat(
+    chatId
+  ) {
     if (isLoading) {
       return;
     }
 
     const chat = chats.find(
-      (currentChat) => currentChat.id === chatId
+      (currentChat) =>
+        currentChat.id === chatId
     );
 
     if (!chat) {
       return;
     }
 
-    const shouldDelete = window.confirm(
-      `Delete "${chat.title}"?`
-    );
+    const shouldDelete =
+      window.confirm(
+        `Delete "${chat.title}"?`
+      );
 
     if (!shouldDelete) {
       return;
@@ -345,12 +468,15 @@ function App() {
       return;
     }
 
-    const remainingChats = chats.filter(
-      (currentChat) => currentChat.id !== chatId
-    );
+    const remainingChats =
+      chats.filter(
+        (currentChat) =>
+          currentChat.id !== chatId
+      );
 
     if (remainingChats.length === 0) {
-      const newChat = createNewChat();
+      const newChat =
+        createNewChat();
 
       setChats([newChat]);
       setActiveChatId(newChat.id);
@@ -361,7 +487,9 @@ function App() {
     setChats(remainingChats);
 
     if (activeChatId === chatId) {
-      setActiveChatId(remainingChats[0].id);
+      setActiveChatId(
+        remainingChats[0].id
+      );
     }
   }
 
@@ -370,16 +498,24 @@ function App() {
     <div className="app-shell">
       <div
         className={`sidebar-wrapper ${
-          sidebarOpen ? "open" : "closed"
+          sidebarOpen
+            ? "open"
+            : "closed"
         }`}
       >
         <Sidebar
           chats={chats}
           activeChatId={activeChatId}
           onNewChat={handleNewChat}
-          onSelectChat={handleSelectChat}
-          onRenameChat={handleRenameChat}
-          onDeleteChat={handleDeleteChat}
+          onSelectChat={
+            handleSelectChat
+          }
+          onRenameChat={
+            handleRenameChat
+          }
+          onDeleteChat={
+            handleDeleteChat
+          }
           isLoading={isLoading}
         />
       </div>
@@ -396,7 +532,9 @@ function App() {
             aria-label="Toggle sidebar"
           >
             {sidebarOpen ? (
-              <PanelLeftClose size={20} />
+              <PanelLeftClose
+                size={20}
+              />
             ) : (
               <Menu size={20} />
             )}
@@ -406,7 +544,8 @@ function App() {
             <Sparkles size={17} />
 
             <span>
-              {activeChat?.title || "Nova"}
+              {activeChat?.title ||
+                "Nova"}
             </span>
           </div>
 
@@ -422,16 +561,20 @@ function App() {
         >
           {messages.length === 0 ? (
             <WelcomeScreen
-              onSuggestionClick={handleSend}
+              onSuggestionClick={
+                handleSend
+              }
             />
           ) : (
             <div className="messages-container">
-              {messages.map((message) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                />
-              ))}
+              {messages.map(
+                (message) => (
+                  <MessageBubble
+                    key={message.id}
+                    message={message}
+                  />
+                )
+              )}
 
               {isLoading && (
                 <div className="streaming-status">
@@ -445,6 +588,9 @@ function App() {
 
         <ChatInput
           onSend={handleSend}
+          onStop={
+            handleStopGeneration
+          }
           isLoading={isLoading}
         />
       </main>
