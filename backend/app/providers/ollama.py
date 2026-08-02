@@ -3,12 +3,38 @@ from collections.abc import Generator
 
 import requests
 
-from app.core.config import OLLAMA_HOST, OLLAMA_MODEL
+from app.conversation.manager import (
+    conversation_manager,
+)
+from app.core.config import (
+    OLLAMA_HOST,
+    OLLAMA_MODEL,
+)
 from app.providers.base import AIProvider
-from app.conversation.manager import conversation_manager
+from app.services.documents import (
+    document_service,
+)
 
 
 class OllamaProvider(AIProvider):
+
+    @staticmethod
+    def _build_messages(
+        message: str,
+        conversation_id: str,
+    ) -> list[dict]:
+        document_context = (
+            document_service.build_rag_context(
+                query=message,
+                conversation_id=conversation_id,
+            )
+        )
+
+        return conversation_manager.build_messages(
+            user_message=message,
+            conversation_id=conversation_id,
+            document_context=document_context,
+        )
 
     def generate(
         self,
@@ -17,8 +43,8 @@ class OllamaProvider(AIProvider):
     ) -> str:
         url = f"{OLLAMA_HOST}/api/chat"
 
-        messages = conversation_manager.build_messages(
-            user_message=message,
+        messages = self._build_messages(
+            message=message,
             conversation_id=conversation_id,
         )
 
@@ -28,8 +54,8 @@ class OllamaProvider(AIProvider):
             "stream": False,
             "keep_alive": "30m",
             "options": {
-                "temperature": 0.6,
-                "num_predict": 250,
+                "temperature": 0.3,
+                "num_predict": 500,
             },
         }
 
@@ -49,7 +75,8 @@ class OllamaProvider(AIProvider):
 
         except requests.exceptions.ConnectionError as error:
             raise RuntimeError(
-                "Cannot connect to Ollama. Make sure Ollama is running."
+                "Cannot connect to Ollama. "
+                "Make sure Ollama is running."
             ) from error
 
         except requests.exceptions.RequestException as error:
@@ -57,7 +84,12 @@ class OllamaProvider(AIProvider):
                 f"Ollama request failed: {error}"
             ) from error
 
-        data = response.json()
+        try:
+            data = response.json()
+        except requests.exceptions.JSONDecodeError as error:
+            raise RuntimeError(
+                "Ollama returned invalid JSON."
+            ) from error
 
         assistant_response = (
             data.get("message", {})
@@ -66,7 +98,9 @@ class OllamaProvider(AIProvider):
         )
 
         if not assistant_response:
-            raise RuntimeError("Ollama returned an empty response.")
+            raise RuntimeError(
+                "Ollama returned an empty response."
+            )
 
         conversation_manager.save_user_message(
             message=message,
@@ -87,8 +121,8 @@ class OllamaProvider(AIProvider):
     ) -> Generator[str, None, None]:
         url = f"{OLLAMA_HOST}/api/chat"
 
-        messages = conversation_manager.build_messages(
-            user_message=message,
+        messages = self._build_messages(
+            message=message,
             conversation_id=conversation_id,
         )
 
@@ -98,8 +132,8 @@ class OllamaProvider(AIProvider):
             "stream": True,
             "keep_alive": "30m",
             "options": {
-                "temperature": 0.6,
-                "num_predict": 250,
+                "temperature": 0.3,
+                "num_predict": 500,
             },
         }
 
@@ -118,14 +152,30 @@ class OllamaProvider(AIProvider):
                     if not line:
                         continue
 
-                    data = json.loads(line.decode("utf-8"))
+                    try:
+                        data = json.loads(
+                            line.decode("utf-8")
+                        )
+                    except json.JSONDecodeError as error:
+                        raise RuntimeError(
+                            "Ollama returned invalid "
+                            "streaming data."
+                        ) from error
 
                     if data.get("error"):
-                        raise RuntimeError(data["error"])
+                        raise RuntimeError(
+                            data["error"]
+                        )
 
                     content = (
-                        data.get("message", {})
-                        .get("content", "")
+                        data.get(
+                            "message",
+                            {},
+                        )
+                        .get(
+                            "content",
+                            "",
+                        )
                     )
 
                     if content:
@@ -137,33 +187,33 @@ class OllamaProvider(AIProvider):
 
         except requests.exceptions.Timeout as error:
             raise RuntimeError(
-                "Ollama streaming request timed out."
+                "Ollama streaming request "
+                "timed out."
             ) from error
 
         except requests.exceptions.ConnectionError as error:
             raise RuntimeError(
-                "Cannot connect to Ollama. Make sure Ollama is running."
+                "Cannot connect to Ollama. "
+                "Make sure Ollama is running."
             ) from error
 
         except requests.exceptions.RequestException as error:
             raise RuntimeError(
-                f"Ollama streaming request failed: {error}"
-            ) from error
-
-        except json.JSONDecodeError as error:
-            raise RuntimeError(
-                "Ollama returned invalid streaming data."
+                "Ollama streaming request "
+                f"failed: {error}"
             ) from error
 
         final_response = full_response.strip()
 
-        if final_response:
-            conversation_manager.save_user_message(
-                message=message,
-                conversation_id=conversation_id,
-            )
+        if not final_response:
+            return
 
-            conversation_manager.save_assistant_message(
-                message=final_response,
-                conversation_id=conversation_id,
-            )
+        conversation_manager.save_user_message(
+            message=message,
+            conversation_id=conversation_id,
+        )
+
+        conversation_manager.save_assistant_message(
+            message=final_response,
+            conversation_id=conversation_id,
+        )

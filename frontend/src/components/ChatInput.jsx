@@ -2,43 +2,69 @@ import { motion } from "framer-motion";
 import {
   ArrowUp,
   CornerDownLeft,
+  FileText,
+  LoaderCircle,
+  Paperclip,
   Sparkles,
   Square,
+  X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 
 function ChatInput({
   onSend,
   onStop,
+  onUploadDocument,
+  uploadedDocument,
   isLoading,
+  isUploading,
 }) {
-  const [input, setInput] = useState("");
+  const [input, setInput] =
+    useState("");
+
   const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
+
 
   useEffect(() => {
-    const textarea = textareaRef.current;
+    const textarea =
+      textareaRef.current;
 
     if (!textarea) {
       return;
     }
 
     textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(
-      textarea.scrollHeight,
-      170
-    )}px`;
+
+    textarea.style.height =
+      `${Math.min(
+        textarea.scrollHeight,
+        170
+      )}px`;
   }, [input]);
 
-  function submitMessage() {
-    const trimmedMessage = input.trim();
 
-    if (!trimmedMessage || isLoading) {
+  function submitMessage() {
+    const trimmedMessage =
+      input.trim();
+
+    if (
+      !trimmedMessage ||
+      isLoading
+    ) {
       return;
     }
 
     onSend(trimmedMessage);
     setInput("");
   }
+
 
   function handleKeyDown(event) {
     if (
@@ -50,8 +76,43 @@ function ChatInput({
     }
   }
 
+
+  function handleFileChange(event) {
+    const file =
+      event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    onUploadDocument(file);
+
+    event.target.value = "";
+  }
+
+
   return (
     <div className="input-area">
+      {uploadedDocument && (
+        <div className="document-pill">
+          <FileText size={15} />
+
+          <span>
+            {uploadedDocument.filename}
+          </span>
+
+          <small>
+            {uploadedDocument.page_count}
+            {" "}pages
+          </small>
+
+          <X
+            className="document-pill-close"
+            size={14}
+          />
+        </div>
+      )}
+
       <motion.div
         className="input-shell"
         initial={{
@@ -75,27 +136,66 @@ function ChatInput({
           />
         </div>
 
+        <button
+          className="attachment-button"
+          onClick={() =>
+            fileInputRef.current?.click()
+          }
+          disabled={
+            isLoading ||
+            isUploading
+          }
+          aria-label="Upload PDF"
+          title="Upload PDF"
+        >
+          {isUploading ? (
+            <LoaderCircle
+              className="spinner"
+              size={17}
+            />
+          ) : (
+            <Paperclip size={17} />
+          )}
+        </button>
+
+        <input
+          ref={fileInputRef}
+          className="hidden-file-input"
+          type="file"
+          accept=".pdf,application/pdf"
+          onChange={handleFileChange}
+        />
+
         <textarea
           ref={textareaRef}
           value={input}
           onChange={(event) =>
-            setInput(event.target.value)
+            setInput(
+              event.target.value
+            )
           }
           onKeyDown={handleKeyDown}
           placeholder={
-            isLoading
-              ? "Nova is responding..."
-              : "Ask Nova anything..."
+            isUploading
+              ? "Processing your PDF..."
+              : isLoading
+                ? "Nova is responding..."
+                : "Ask Nova anything..."
           }
           rows="1"
-          disabled={isLoading}
+          disabled={
+            isLoading ||
+            isUploading
+          }
           aria-label="Message Nova"
         />
 
         <div className="composer-actions">
           {!isLoading && (
             <div className="keyboard-hint">
-              <CornerDownLeft size={13} />
+              <CornerDownLeft
+                size={13}
+              />
               <span>Enter</span>
             </div>
           )}
@@ -123,7 +223,10 @@ function ChatInput({
             <motion.button
               className="send-button"
               onClick={submitMessage}
-              disabled={!input.trim()}
+              disabled={
+                !input.trim() ||
+                isUploading
+              }
               aria-label="Send message"
               whileHover={
                 input.trim()
@@ -150,11 +253,12 @@ function ChatInput({
       </motion.div>
 
       <p className="input-hint">
-        Nova can make mistakes. Verify important
-        information.
+        Upload a PDF or ask Nova
+        anything.
       </p>
     </div>
   );
 }
+
 
 export default ChatInput;

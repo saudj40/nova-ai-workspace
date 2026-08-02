@@ -79,7 +79,9 @@ function createSmoothWriter(onChunk) {
     }
 
     animationFrameId =
-      window.requestAnimationFrame(animate);
+      window.requestAnimationFrame(
+        animate
+      );
   }
 
   function startAnimation() {
@@ -91,7 +93,9 @@ function createSmoothWriter(onChunk) {
     }
 
     animationFrameId =
-      window.requestAnimationFrame(animate);
+      window.requestAnimationFrame(
+        animate
+      );
   }
 
   return {
@@ -150,11 +154,13 @@ export async function streamMessage(
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type":
+            "application/json",
         },
         body: JSON.stringify({
           message,
-          conversation_id: conversationId,
+          conversation_id:
+            conversationId,
         }),
         signal,
       }
@@ -165,7 +171,8 @@ export async function streamMessage(
     }
 
     throw new Error(
-      "Cannot connect to Nova's backend. Make sure FastAPI is running."
+      "Cannot connect to Nova's backend. "
+      + "Make sure FastAPI is running."
     );
   }
 
@@ -178,9 +185,10 @@ export async function streamMessage(
         await response.json();
 
       errorMessage =
-        errorData.detail || errorMessage;
+        errorData.detail ||
+        errorMessage;
     } catch {
-      // The response was not JSON.
+      // Response was not JSON.
     }
 
     throw new Error(errorMessage);
@@ -188,11 +196,14 @@ export async function streamMessage(
 
   if (!response.body) {
     throw new Error(
-      "Streaming is not supported by this browser."
+      "Streaming is not supported "
+      + "by this browser."
     );
   }
 
-  const reader = response.body.getReader();
+  const reader =
+    response.body.getReader();
+
   const decoder = new TextDecoder();
 
   smoothWriter =
@@ -223,19 +234,20 @@ export async function streamMessage(
         break;
       }
 
-      const receivedText = decoder.decode(
-        value,
-        {
+      const receivedText =
+        decoder.decode(value, {
           stream: true,
-        }
-      );
+        });
 
-      smoothWriter.push(receivedText);
+      smoothWriter.push(
+        receivedText
+      );
     }
 
-    const finalText = decoder.decode();
+    smoothWriter.push(
+      decoder.decode()
+    );
 
-    smoothWriter.push(finalText);
     smoothWriter.finish();
 
     await smoothWriter.waitUntilFinished();
@@ -246,12 +258,10 @@ export async function streamMessage(
       error.name === "AbortError" ||
       signal?.aborted
     ) {
-      const abortError = new DOMException(
+      throw new DOMException(
         "Generation stopped",
         "AbortError"
       );
-
-      throw abortError;
     }
 
     throw error;
@@ -267,6 +277,81 @@ export async function streamMessage(
       // Reader may already be cancelled.
     }
   }
+}
+
+
+export async function uploadDocument(
+  file,
+  conversationId
+) {
+  const formData = new FormData();
+
+  formData.append(
+    "conversation_id",
+    conversationId
+  );
+
+  formData.append(
+    "file",
+    file
+  );
+
+  let response;
+
+  try {
+    response = await fetch(
+      `${API_URL}/documents/upload`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+  } catch {
+    throw new Error(
+      "Cannot connect to Nova's backend."
+    );
+  }
+
+  if (!response.ok) {
+    let errorMessage =
+      "The PDF could not be uploaded.";
+
+    try {
+      const errorData =
+        await response.json();
+
+      errorMessage =
+        errorData.detail ||
+        errorMessage;
+    } catch {
+      // Response was not JSON.
+    }
+
+    throw new Error(errorMessage);
+  }
+
+  return response.json();
+}
+
+
+export async function getDocuments(
+  conversationId
+) {
+  const response = await fetch(
+    `${API_URL}/documents/conversation/${encodeURIComponent(
+      conversationId
+    )}`
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      "Could not load conversation documents."
+    );
+  }
+
+  const data = await response.json();
+
+  return data.documents;
 }
 
 
@@ -286,22 +371,23 @@ export async function deleteConversation(
     );
   } catch {
     throw new Error(
-      "Cannot connect to Nova's backend. Make sure FastAPI is running."
+      "Cannot connect to Nova's backend."
     );
   }
 
   if (!response.ok) {
     let errorMessage =
-      "Could not delete the conversation from Nova.";
+      "Could not delete the conversation.";
 
     try {
       const errorData =
         await response.json();
 
       errorMessage =
-        errorData.detail || errorMessage;
+        errorData.detail ||
+        errorMessage;
     } catch {
-      // Successful DELETE responses have no body.
+      // Successful DELETE has no body.
     }
 
     throw new Error(errorMessage);

@@ -18,6 +18,7 @@ import ChatInput from "./components/ChatInput";
 import {
   deleteConversation,
   streamMessage,
+  uploadDocument,
 } from "./services/api";
 
 import "./App.css";
@@ -76,12 +77,6 @@ function App() {
   const abortControllerRef =
     useRef(null);
 
-  const activeAssistantIdRef =
-    useRef(null);
-
-  const activeGenerationChatIdRef =
-    useRef(null);
-
   const [chats, setChats] = useState(
     initialChatsRef.current
   );
@@ -108,6 +103,14 @@ function App() {
 
   const [isLoading, setIsLoading] =
     useState(false);
+
+  const [isUploading, setIsUploading] =
+    useState(false);
+
+  const [
+    uploadedDocument,
+    setUploadedDocument,
+  ] = useState(null);
 
   const [
     sidebarOpen,
@@ -138,6 +141,8 @@ function App() {
         activeChatId
       );
     }
+
+    setUploadedDocument(null);
   }, [activeChatId]);
 
 
@@ -193,6 +198,7 @@ function App() {
     if (
       !trimmedMessage ||
       isLoading ||
+      isUploading ||
       !activeChat
     ) {
       return;
@@ -221,12 +227,6 @@ function App() {
 
     abortControllerRef.current =
       controller;
-
-    activeAssistantIdRef.current =
-      assistantMessageId;
-
-    activeGenerationChatIdRef.current =
-      targetChatId;
 
     setChats((currentChats) =>
       currentChats.map((chat) => {
@@ -334,10 +334,6 @@ function App() {
       }
     } finally {
       abortControllerRef.current = null;
-      activeAssistantIdRef.current = null;
-      activeGenerationChatIdRef.current =
-        null;
-
       setIsLoading(false);
     }
   }
@@ -355,8 +351,52 @@ function App() {
   }
 
 
+  async function handleUploadDocument(file) {
+    if (
+      !activeChat ||
+      isLoading ||
+      isUploading
+    ) {
+      return;
+    }
+
+    const isPdf =
+      file.type === "application/pdf" ||
+      file.name
+        .toLowerCase()
+        .endsWith(".pdf");
+
+    if (!isPdf) {
+      window.alert(
+        "Please select a PDF file."
+      );
+
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      const document =
+        await uploadDocument(
+          file,
+          activeChat.id
+        );
+
+      setUploadedDocument(document);
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+
   function handleNewChat() {
-    if (isLoading) {
+    if (
+      isLoading ||
+      isUploading
+    ) {
       return;
     }
 
@@ -371,6 +411,7 @@ function App() {
         emptyExistingChat.id
       );
 
+      setUploadedDocument(null);
       return;
     }
 
@@ -382,20 +423,28 @@ function App() {
     ]);
 
     setActiveChatId(newChat.id);
+    setUploadedDocument(null);
   }
 
 
   function handleSelectChat(chatId) {
-    if (isLoading) {
+    if (
+      isLoading ||
+      isUploading
+    ) {
       return;
     }
 
     setActiveChatId(chatId);
+    setUploadedDocument(null);
   }
 
 
   function handleRenameChat(chatId) {
-    if (isLoading) {
+    if (
+      isLoading ||
+      isUploading
+    ) {
       return;
     }
 
@@ -436,10 +485,11 @@ function App() {
   }
 
 
-  async function handleDeleteChat(
-    chatId
-  ) {
-    if (isLoading) {
+  async function handleDeleteChat(chatId) {
+    if (
+      isLoading ||
+      isUploading
+    ) {
       return;
     }
 
@@ -480,6 +530,7 @@ function App() {
 
       setChats([newChat]);
       setActiveChatId(newChat.id);
+      setUploadedDocument(null);
 
       return;
     }
@@ -490,6 +541,8 @@ function App() {
       setActiveChatId(
         remainingChats[0].id
       );
+
+      setUploadedDocument(null);
     }
   }
 
@@ -516,7 +569,10 @@ function App() {
           onDeleteChat={
             handleDeleteChat
           }
-          isLoading={isLoading}
+          isLoading={
+            isLoading ||
+            isUploading
+          }
         />
       </div>
 
@@ -591,7 +647,14 @@ function App() {
           onStop={
             handleStopGeneration
           }
+          onUploadDocument={
+            handleUploadDocument
+          }
+          uploadedDocument={
+            uploadedDocument
+          }
           isLoading={isLoading}
+          isUploading={isUploading}
         />
       </main>
     </div>
