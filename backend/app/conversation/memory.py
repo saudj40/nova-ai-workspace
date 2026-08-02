@@ -1,38 +1,156 @@
+import sqlite3
+from pathlib import Path
+from threading import Lock
+
+
 class ConversationMemory:
     """
-    Stores conversation history in memory.
+    Stores Nova conversation history persistently in SQLite.
 
-    Later we'll replace this with Redis or PostgreSQL
-    without changing the rest of Nova.
+    Each conversation is isolated using its conversation_id.
+    The database survives FastAPI restarts.
     """
 
     def __init__(self):
-        self._conversations = {}
+        backend_directory = Path(__file__).resolve().parents[2]
+        data_directory = backend_directory / "data"
 
-    def get_messages(self, conversation_id: str = "default"):
+        data_directory.mkdir(parents=True, exist_ok=True)
 
-        return self._conversations.get(conversation_id, [])
+        self.database_path = data_directory / "nova.db"
+        self._lock = Lock()
+
+        self._initialize_database()
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(
+            self.database_path,
+            timeout=30,
+        )
+
+        connection.row_factory = sqlite3.Row
+
+        return connection
+
+    def _initialize_database(self) -> None:
+        with self._lock:
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS conversation_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        conversation_id TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+
+                connection.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS
+                    idx_conversation_messages_conversation_id
+                    ON conversation_messages(conversation_id)
+                    """
+                )
+
+                connection.commit()
+
+    def get_messages(
+        self,
+        conversation_id: str = "default",
+    ) -> list[dict[str, str]]:
+        with self._lock:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT role, content
+                    FROM conversation_messages
+                    WHERE conversation_id = ?
+                    ORDER BY id ASC
+                    """,
+                    (conversation_id,),
+                ).fetchall()
+
+        return [
+            {
+                "role": row["role"],
+                "content": row["content"],
+            }
+            for row in rows
+        ]
 
     def add_message(
         self,
         role: str,
         content: str,
-        conversation_id: str = "default"
-    ):
+        conversation_id: str = "default",
+    ) -> None:
+        allowed_roles = {
+            "user",
+            "assistant",
+            "system",
+        }
 
-        if conversation_id not in self._conversations:
-            self._conversations[conversation_id] = []
+        if role not in allowed_roles:
+            raise ValueError(f"Unsupported conversation role: {role}")
 
-        self._conversations[conversation_id].append(
-            {
-                "role": role,
-                "content": content
-            }
-        )
+        cleaned_content = content.strip()
 
-    def clear(self, conversation_id: str = "default"):
+        if not cleaned_content:
+            return
 
-        self._conversations[conversation_id] = []
+        with self._lock:
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO conversation_messages (
+                        conversation_id,
+                        role,
+                        content
+                    )
+                    VALUES (?, ?, ?)
+                    """,
+                    (
+                        conversation_id,
+                        role,
+                        cleaned_content,
+                    ),
+                )
+
+                connection.commit()
+
+    def clear(
+        self,
+        conversation_id: str = "default",
+    ) -> None:
+        with self._lock:
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    DELETE FROM conversation_messages
+                    WHERE conversation_id = ?
+                    """,
+                    (conversation_id,),
+                )
+
+                connection.commit()
+
+    def delete_conversation(
+        self,
+        conversation_id: str,
+    ) -> None:
+        self.clear(conversation_id)
+
+    def clear_all(self) -> None:
+        with self._lock:
+            with self._connect() as connection:
+                connection.execute(
+                    "DELETE FROM conversation_messages"
+                )
+
+                connection.commit()
 
 
 memory = ConversationMemory()
