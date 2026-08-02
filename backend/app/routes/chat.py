@@ -11,10 +11,13 @@ router = APIRouter()
 @router.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
     try:
-        response = generate_response(request.message)
+        response = generate_response(
+            message=request.message,
+            conversation_id=request.conversation_id,
+        )
 
         return {
-            "response": response
+            "response": response,
         }
 
     except RuntimeError as error:
@@ -27,7 +30,10 @@ def chat(request: ChatRequest):
 @router.post("/chat/stream")
 def chat_stream(request: ChatRequest):
     return StreamingResponse(
-        stream_response(request.message),
+        stream_response(
+            message=request.message,
+            conversation_id=request.conversation_id,
+        ),
         media_type="text/plain",
         headers={
             "Cache-Control": "no-cache",

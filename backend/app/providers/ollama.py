@@ -10,9 +10,17 @@ from app.conversation.manager import conversation_manager
 
 class OllamaProvider(AIProvider):
 
-    def generate(self, message: str) -> str:
+    def generate(
+        self,
+        message: str,
+        conversation_id: str,
+    ) -> str:
         url = f"{OLLAMA_HOST}/api/chat"
-        messages = conversation_manager.build_messages(message)
+
+        messages = conversation_manager.build_messages(
+            user_message=message,
+            conversation_id=conversation_id,
+        )
 
         payload = {
             "model": OLLAMA_MODEL,
@@ -31,6 +39,7 @@ class OllamaProvider(AIProvider):
                 json=payload,
                 timeout=180,
             )
+
             response.raise_for_status()
 
         except requests.exceptions.Timeout as error:
@@ -59,14 +68,29 @@ class OllamaProvider(AIProvider):
         if not assistant_response:
             raise RuntimeError("Ollama returned an empty response.")
 
-        conversation_manager.save_user_message(message)
-        conversation_manager.save_assistant_message(assistant_response)
+        conversation_manager.save_user_message(
+            message=message,
+            conversation_id=conversation_id,
+        )
+
+        conversation_manager.save_assistant_message(
+            message=assistant_response,
+            conversation_id=conversation_id,
+        )
 
         return assistant_response
 
-    def generate_stream(self, message: str) -> Generator[str, None, None]:
+    def generate_stream(
+        self,
+        message: str,
+        conversation_id: str,
+    ) -> Generator[str, None, None]:
         url = f"{OLLAMA_HOST}/api/chat"
-        messages = conversation_manager.build_messages(message)
+
+        messages = conversation_manager.build_messages(
+            user_message=message,
+            conversation_id=conversation_id,
+        )
 
         payload = {
             "model": OLLAMA_MODEL,
@@ -134,5 +158,12 @@ class OllamaProvider(AIProvider):
         final_response = full_response.strip()
 
         if final_response:
-            conversation_manager.save_user_message(message)
-            conversation_manager.save_assistant_message(final_response)
+            conversation_manager.save_user_message(
+                message=message,
+                conversation_id=conversation_id,
+            )
+
+            conversation_manager.save_assistant_message(
+                message=final_response,
+                conversation_id=conversation_id,
+            )

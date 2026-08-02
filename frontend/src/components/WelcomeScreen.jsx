@@ -1,70 +1,160 @@
+import { motion } from "framer-motion";
 import {
-  BrainCircuit,
+  ArrowUpRight,
   Code2,
-  FileText,
+  FileSearch,
   Lightbulb,
-  Sparkles,
+  WandSparkles,
 } from "lucide-react";
 
 const suggestions = [
   {
-    icon: <Code2 size={20} />,
-    title: "Build software",
-    prompt: "Help me design a clean FastAPI project architecture.",
+    icon: Code2,
+    title: "Build something",
+    description: "Plan, architect or write production-ready software.",
+    prompt: "Help me build a production-ready software project.",
   },
   {
-    icon: <BrainCircuit size={20} />,
-    title: "Learn AI",
-    prompt: "Explain how retrieval-augmented generation works.",
+    icon: FileSearch,
+    title: "Understand a document",
+    description: "Summarize, analyze and extract useful information.",
+    prompt: "Help me understand and summarize a technical document.",
   },
   {
-    icon: <FileText size={20} />,
-    title: "Analyze content",
-    prompt: "Help me summarize and understand a technical document.",
+    icon: WandSparkles,
+    title: "Solve a problem",
+    description: "Think clearly through a difficult technical challenge.",
+    prompt: "Help me solve a difficult technical problem step by step.",
   },
   {
-    icon: <Lightbulb size={20} />,
-    title: "Generate ideas",
-    prompt: "Suggest practical AI product ideas I can build.",
+    icon: Lightbulb,
+    title: "Explore an idea",
+    description: "Turn an early idea into a practical direction.",
+    prompt: "Help me explore and improve a new product idea.",
   },
 ];
 
+const containerAnimation = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.07,
+      delayChildren: 0.12,
+    },
+  },
+};
+
+const itemAnimation = {
+  hidden: {
+    opacity: 0,
+    y: 14,
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.55,
+      ease: [0.22, 1, 0.36, 1],
+    },
+  },
+};
+
+function getGreeting() {
+  const hour = new Date().getHours();
+
+  if (hour < 12) {
+    return "Good morning";
+  }
+
+  if (hour < 18) {
+    return "Good afternoon";
+  }
+
+  return "Good evening";
+}
+
 function WelcomeScreen({ onSuggestionClick }) {
   return (
-    <section className="welcome-screen">
-      <div className="welcome-logo">
-        <Sparkles size={31} />
-      </div>
+    <motion.section
+      className="welcome-screen"
+      variants={containerAnimation}
+      initial="hidden"
+      animate="visible"
+    >
+      <motion.div className="nova-orb" variants={itemAnimation}>
+        <div className="nova-orb-glow" />
+        <div className="nova-orb-core" />
 
-      <p className="welcome-eyebrow">NOVA AI WORKSPACE</p>
+        <div className="nova-orbit nova-orbit-one">
+          <span />
+        </div>
 
-      <h2>
-        Intelligence built around
-        <span> your work.</span>
-      </h2>
+        <div className="nova-orbit nova-orbit-two">
+          <span />
+        </div>
+      </motion.div>
 
-      <p className="welcome-description">
-        Ask questions, explore ideas, write code and build with your private
-        local AI assistant.
-      </p>
+      <motion.p className="welcome-kicker" variants={itemAnimation}>
+        NOVA
+        <span />
+        PERSONAL AI WORKSPACE
+      </motion.p>
 
-      <div className="suggestion-grid">
-        {suggestions.map((suggestion) => (
-          <button
-            className="suggestion-card"
-            key={suggestion.title}
-            onClick={() => onSuggestionClick(suggestion.prompt)}
-          >
-            <div className="suggestion-icon">{suggestion.icon}</div>
+      <motion.h1 variants={itemAnimation}>
+        {getGreeting()}, Saud.
+      </motion.h1>
 
-            <div>
-              <strong>{suggestion.title}</strong>
-              <p>{suggestion.prompt}</p>
-            </div>
-          </button>
-        ))}
-      </div>
-    </section>
+      <motion.h2 variants={itemAnimation}>
+        What would you like to create?
+      </motion.h2>
+
+      <motion.p
+        className="welcome-description"
+        variants={itemAnimation}
+      >
+        Think, build and explore with a private AI workspace designed around
+        your ideas.
+      </motion.p>
+
+      <motion.div
+        className="suggestion-grid"
+        variants={containerAnimation}
+      >
+        {suggestions.map((suggestion) => {
+          const Icon = suggestion.icon;
+
+          return (
+            <motion.button
+              className="suggestion-card"
+              key={suggestion.title}
+              variants={itemAnimation}
+              whileHover={{
+                y: -3,
+              }}
+              whileTap={{
+                scale: 0.985,
+              }}
+              onClick={() => onSuggestionClick(suggestion.prompt)}
+            >
+              <div className="suggestion-icon">
+                <Icon size={18} strokeWidth={1.8} />
+              </div>
+
+              <div className="suggestion-copy">
+                <strong>{suggestion.title}</strong>
+                <p>{suggestion.description}</p>
+              </div>
+
+              <ArrowUpRight
+                className="suggestion-arrow"
+                size={16}
+                strokeWidth={1.8}
+              />
+            </motion.button>
+          );
+        })}
+      </motion.div>
+    </motion.section>
   );
 }
 

@@ -1,6 +1,20 @@
-import { MessageSquarePlus, Sparkles, Trash2 } from "lucide-react";
+import {
+  MessageSquare,
+  MessageSquarePlus,
+  Pencil,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 
-function Sidebar({ onNewChat, hasMessages }) {
+function Sidebar({
+  chats,
+  activeChatId,
+  onNewChat,
+  onSelectChat,
+  onRenameChat,
+  onDeleteChat,
+  isLoading,
+}) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -14,28 +28,65 @@ function Sidebar({ onNewChat, hasMessages }) {
         </div>
       </div>
 
-      <button className="new-chat-button" onClick={onNewChat}>
+      <button
+        className="new-chat-button"
+        onClick={onNewChat}
+        disabled={isLoading}
+      >
         <MessageSquarePlus size={18} />
         New chat
       </button>
 
-      <div className="sidebar-section">
-        <p className="sidebar-label">Workspace</p>
+      <div className="sidebar-section chat-list-section">
+        <p className="sidebar-label">Conversations</p>
 
-        <div className="sidebar-item active">
-          <span className="sidebar-dot" />
-          Current conversation
+        <div className="chat-list">
+          {chats.map((chat) => {
+            const isActive = chat.id === activeChatId;
+
+            return (
+              <div
+                className={`chat-list-item ${isActive ? "active" : ""}`}
+                key={chat.id}
+              >
+                <button
+                  className="chat-select-button"
+                  onClick={() => onSelectChat(chat.id)}
+                  disabled={isLoading}
+                  title={chat.title}
+                >
+                  <MessageSquare size={16} />
+
+                  <span>{chat.title}</span>
+                </button>
+
+                <div className="chat-actions">
+                  <button
+                    onClick={() => onRenameChat(chat.id)}
+                    disabled={isLoading}
+                    aria-label="Rename conversation"
+                    title="Rename"
+                  >
+                    <Pencil size={14} />
+                  </button>
+
+                  <button
+                    className="delete-chat-button"
+                    onClick={() => onDeleteChat(chat.id)}
+                    disabled={isLoading}
+                    aria-label="Delete conversation"
+                    title="Delete"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       <div className="sidebar-spacer" />
-
-      {hasMessages && (
-        <button className="clear-button" onClick={onNewChat}>
-          <Trash2 size={17} />
-          Clear conversation
-        </button>
-      )}
 
       <div className="local-status">
         <span className="status-dot" />

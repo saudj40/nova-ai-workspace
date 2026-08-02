@@ -9,27 +9,119 @@ import { streamMessage } from "./services/api";
 
 import "./App.css";
 
+const STORAGE_KEY = "nova-chats";
+const ACTIVE_CHAT_KEY = "nova-active-chat";
+
+function createNewChat() {
+  return {
+    id: crypto.randomUUID(),
+    title: "New conversation",
+    messages: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function loadChats() {
+  try {
+    const savedChats = localStorage.getItem(STORAGE_KEY);
+
+    if (!savedChats) {
+      return [createNewChat()];
+    }
+
+    const parsedChats = JSON.parse(savedChats);
+
+    if (!Array.isArray(parsedChats) || parsedChats.length === 0) {
+      return [createNewChat()];
+    }
+
+    return parsedChats;
+  } catch {
+    return [createNewChat()];
+  }
+}
+
 function App() {
-  const [messages, setMessages] = useState([]);
+  const initialChatsRef = useRef(loadChats());
+  const conversationAreaRef = useRef(null);
+
+  const [chats, setChats] = useState(initialChatsRef.current);
+
+  const [activeChatId, setActiveChatId] = useState(() => {
+    const savedActiveChatId = localStorage.getItem(ACTIVE_CHAT_KEY);
+
+    const savedChatExists = initialChatsRef.current.some(
+      (chat) => chat.id === savedActiveChatId
+    );
+
+    return savedChatExists
+      ? savedActiveChatId
+      : initialChatsRef.current[0].id;
+  });
+
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const messagesEndRef = useRef(null);
+
+  const activeChat =
+    chats.find((chat) => chat.id === activeChatId) || chats[0];
+
+  const messages = activeChat?.messages || [];
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
+  }, [chats]);
+
+  useEffect(() => {
+    if (activeChatId) {
+      localStorage.setItem(ACTIVE_CHAT_KEY, activeChatId);
+    }
+  }, [activeChatId]);
+
+  useEffect(() => {
+    const conversationArea = conversationAreaRef.current;
+
+    if (!conversationArea) {
+      return;
+    }
+
+    conversationArea.scrollTo({
+      top: conversationArea.scrollHeight,
       behavior: "smooth",
     });
   }, [messages, isLoading]);
 
+  function updateChatMessages(chatId, updater) {
+    setChats((currentChats) =>
+      currentChats.map((chat) => {
+        if (chat.id !== chatId) {
+          return chat;
+        }
+
+        const updatedMessages = updater(chat.messages);
+
+        return {
+          ...chat,
+          messages: updatedMessages,
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+  }
+
   async function handleSend(message) {
-    if (!message.trim() || isLoading) {
+    const trimmedMessage = message.trim();
+
+    if (!trimmedMessage || isLoading || !activeChat) {
       return;
     }
+
+    const targetChatId = activeChat.id;
 
     const userMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      content: message,
+      content: trimmedMessage,
     };
 
     const assistantMessageId = crypto.randomUUID();
@@ -40,29 +132,55 @@ function App() {
       content: "",
     };
 
-    setMessages((currentMessages) => [
-      ...currentMessages,
-      userMessage,
-      assistantMessage,
-    ]);
+    setChats((currentChats) =>
+      currentChats.map((chat) => {
+        if (chat.id !== targetChatId) {
+          return chat;
+        }
+
+        const shouldCreateTitle =
+          chat.title === "New conversation" &&
+          chat.messages.length === 0;
+
+        const generatedTitle =
+          trimmedMessage.length > 32
+            ? `${trimmedMessage.slice(0, 32)}...`
+            : trimmedMessage;
+
+        return {
+          ...chat,
+          title: shouldCreateTitle ? generatedTitle : chat.title,
+          messages: [
+            ...chat.messages,
+            userMessage,
+            assistantMessage,
+          ],
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
 
     setIsLoading(true);
 
     try {
-      await streamMessage(message, (chunk) => {
-        setMessages((currentMessages) =>
-          currentMessages.map((currentMessage) =>
-            currentMessage.id === assistantMessageId
-              ? {
-                  ...currentMessage,
-                  content: currentMessage.content + chunk,
-                }
-              : currentMessage
-          )
-        );
-      });
+      await streamMessage(
+        trimmedMessage,
+        targetChatId,
+        (chunk) => {
+          updateChatMessages(targetChatId, (currentMessages) =>
+            currentMessages.map((currentMessage) =>
+              currentMessage.id === assistantMessageId
+                ? {
+                    ...currentMessage,
+                    content: currentMessage.content + chunk,
+                  }
+                : currentMessage
+            )
+          );
+        }
+      );
     } catch (error) {
-      setMessages((currentMessages) =>
+      updateChatMessages(targetChatId, (currentMessages) =>
         currentMessages.map((currentMessage) =>
           currentMessage.id === assistantMessageId
             ? {
@@ -82,7 +200,100 @@ function App() {
       return;
     }
 
-    setMessages([]);
+    const emptyExistingChat = chats.find(
+      (chat) => chat.messages.length === 0
+    );
+
+    if (emptyExistingChat) {
+      setActiveChatId(emptyExistingChat.id);
+      return;
+    }
+
+    const newChat = createNewChat();
+
+    setChats((currentChats) => [newChat, ...currentChats]);
+    setActiveChatId(newChat.id);
+  }
+
+  function handleSelectChat(chatId) {
+    if (isLoading) {
+      return;
+    }
+
+    setActiveChatId(chatId);
+  }
+
+  function handleRenameChat(chatId) {
+    if (isLoading) {
+      return;
+    }
+
+    const chat = chats.find((currentChat) => currentChat.id === chatId);
+
+    if (!chat) {
+      return;
+    }
+
+    const newTitle = window.prompt(
+      "Rename conversation:",
+      chat.title
+    );
+
+    const trimmedTitle = newTitle?.trim();
+
+    if (!trimmedTitle) {
+      return;
+    }
+
+    setChats((currentChats) =>
+      currentChats.map((currentChat) =>
+        currentChat.id === chatId
+          ? {
+              ...currentChat,
+              title: trimmedTitle,
+              updatedAt: new Date().toISOString(),
+            }
+          : currentChat
+      )
+    );
+  }
+
+  function handleDeleteChat(chatId) {
+    if (isLoading) {
+      return;
+    }
+
+    const chat = chats.find((currentChat) => currentChat.id === chatId);
+
+    if (!chat) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Delete "${chat.title}"?`
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    const remainingChats = chats.filter(
+      (currentChat) => currentChat.id !== chatId
+    );
+
+    if (remainingChats.length === 0) {
+      const newChat = createNewChat();
+
+      setChats([newChat]);
+      setActiveChatId(newChat.id);
+      return;
+    }
+
+    setChats(remainingChats);
+
+    if (activeChatId === chatId) {
+      setActiveChatId(remainingChats[0].id);
+    }
   }
 
   return (
@@ -93,8 +304,13 @@ function App() {
         }`}
       >
         <Sidebar
+          chats={chats}
+          activeChatId={activeChatId}
           onNewChat={handleNewChat}
-          hasMessages={messages.length > 0}
+          onSelectChat={handleSelectChat}
+          onRenameChat={handleRenameChat}
+          onDeleteChat={handleDeleteChat}
+          isLoading={isLoading}
         />
       </div>
 
@@ -116,7 +332,7 @@ function App() {
 
           <div className="topbar-title">
             <Sparkles size={17} />
-            <span>Nova</span>
+            <span>{activeChat?.title || "Nova"}</span>
           </div>
 
           <div className="model-badge">
@@ -125,7 +341,10 @@ function App() {
           </div>
         </header>
 
-        <section className="conversation-area">
+        <section
+          ref={conversationAreaRef}
+          className="conversation-area"
+        >
           {messages.length === 0 ? (
             <WelcomeScreen onSuggestionClick={handleSend} />
           ) : (
@@ -143,8 +362,6 @@ function App() {
                   Nova is generating
                 </div>
               )}
-
-              <div ref={messagesEndRef} />
             </div>
           )}
         </section>
