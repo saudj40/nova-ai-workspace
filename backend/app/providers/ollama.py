@@ -2,7 +2,7 @@ import requests
 
 from app.core.config import OLLAMA_HOST, OLLAMA_MODEL
 from app.providers.base import AIProvider
-from app.prompts.system_prompt import SYSTEM_PROMPT
+from app.conversation.manager import conversation_manager
 
 
 class OllamaProvider(AIProvider):
@@ -11,18 +11,11 @@ class OllamaProvider(AIProvider):
 
         url = f"{OLLAMA_HOST}/api/chat"
 
+        messages = conversation_manager.build_messages(message)
+
         payload = {
             "model": OLLAMA_MODEL,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT
-                },
-                {
-                    "role": "user",
-                    "content": message
-                }
-            ],
+            "messages": messages,
             "stream": False
         }
 
@@ -36,4 +29,9 @@ class OllamaProvider(AIProvider):
 
         data = response.json()
 
-        return data["message"]["content"]
+        assistant_response = data["message"]["content"]
+
+        conversation_manager.save_user_message(message)
+        conversation_manager.save_assistant_message(assistant_response)
+
+        return assistant_response
