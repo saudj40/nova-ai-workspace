@@ -1,6 +1,7 @@
 const API_URL =
   import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
+
 export async function streamMessage(
   message,
   conversationId,
@@ -26,20 +27,23 @@ export async function streamMessage(
   }
 
   if (!response.ok) {
-    let errorMessage = "Nova encountered an unexpected error.";
+    let errorMessage =
+      "Nova encountered an unexpected error.";
 
     try {
       const errorData = await response.json();
       errorMessage = errorData.detail || errorMessage;
     } catch {
-      // Response was not JSON.
+      // The response was not JSON.
     }
 
     throw new Error(errorMessage);
   }
 
   if (!response.body) {
-    throw new Error("Streaming is not supported by this browser.");
+    throw new Error(
+      "Streaming is not supported by this browser."
+    );
   }
 
   const reader = response.body.getReader();
@@ -65,5 +69,39 @@ export async function streamMessage(
 
   if (finalChunk) {
     onChunk(finalChunk);
+  }
+}
+
+
+export async function deleteConversation(conversationId) {
+  let response;
+
+  try {
+    response = await fetch(
+      `${API_URL}/conversations/${encodeURIComponent(
+        conversationId
+      )}`,
+      {
+        method: "DELETE",
+      }
+    );
+  } catch {
+    throw new Error(
+      "Cannot connect to Nova's backend. Make sure FastAPI is running."
+    );
+  }
+
+  if (!response.ok) {
+    let errorMessage =
+      "Could not delete the conversation from Nova.";
+
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.detail || errorMessage;
+    } catch {
+      // A successful DELETE response has no JSON body.
+    }
+
+    throw new Error(errorMessage);
   }
 }

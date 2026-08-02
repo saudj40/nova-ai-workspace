@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 
+from app.conversation.manager import conversation_manager
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.nova import generate_response, stream_response
 
@@ -40,3 +41,13 @@ def chat_stream(request: ChatRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.delete(
+    "/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_conversation(conversation_id: str):
+    conversation_manager.clear(conversation_id)
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
