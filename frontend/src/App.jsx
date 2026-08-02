@@ -5,7 +5,7 @@ import Sidebar from "./components/Sidebar";
 import WelcomeScreen from "./components/WelcomeScreen";
 import MessageBubble from "./components/MessageBubble";
 import ChatInput from "./components/ChatInput";
-import { sendMessage } from "./services/api";
+import { streamMessage } from "./services/api";
 
 import "./App.css";
 
@@ -32,47 +32,66 @@ function App() {
       content: message,
     };
 
+    const assistantMessageId = crypto.randomUUID();
+
+    const assistantMessage = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+    };
+
     setMessages((currentMessages) => [
       ...currentMessages,
       userMessage,
+      assistantMessage,
     ]);
 
     setIsLoading(true);
 
     try {
-      const reply = await sendMessage(message);
-
-      const assistantMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: reply,
-      };
-
-      setMessages((currentMessages) => [
-        ...currentMessages,
-        assistantMessage,
-      ]);
+      await streamMessage(message, (chunk) => {
+        setMessages((currentMessages) =>
+          currentMessages.map((currentMessage) =>
+            currentMessage.id === assistantMessageId
+              ? {
+                  ...currentMessage,
+                  content: currentMessage.content + chunk,
+                }
+              : currentMessage
+          )
+        );
+      });
     } catch (error) {
-      setMessages((currentMessages) => [
-        ...currentMessages,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: `**Connection error:** ${error.message}`,
-        },
-      ]);
+      setMessages((currentMessages) =>
+        currentMessages.map((currentMessage) =>
+          currentMessage.id === assistantMessageId
+            ? {
+                ...currentMessage,
+                content: `**Connection error:** ${error.message}`,
+              }
+            : currentMessage
+        )
+      );
     } finally {
       setIsLoading(false);
     }
   }
 
   function handleNewChat() {
+    if (isLoading) {
+      return;
+    }
+
     setMessages([]);
   }
 
   return (
     <div className="app-shell">
-      <div className={`sidebar-wrapper ${sidebarOpen ? "open" : "closed"}`}>
+      <div
+        className={`sidebar-wrapper ${
+          sidebarOpen ? "open" : "closed"
+        }`}
+      >
         <Sidebar
           onNewChat={handleNewChat}
           hasMessages={messages.length > 0}
@@ -83,10 +102,16 @@ function App() {
         <header className="topbar">
           <button
             className="icon-button"
-            onClick={() => setSidebarOpen((current) => !current)}
+            onClick={() =>
+              setSidebarOpen((current) => !current)
+            }
             aria-label="Toggle sidebar"
           >
-            {sidebarOpen ? <PanelLeftClose size={20} /> : <Menu size={20} />}
+            {sidebarOpen ? (
+              <PanelLeftClose size={20} />
+            ) : (
+              <Menu size={20} />
+            )}
           </button>
 
           <div className="topbar-title">
@@ -106,20 +131,16 @@ function App() {
           ) : (
             <div className="messages-container">
               {messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                />
               ))}
 
               {isLoading && (
-                <div className="typing-row">
-                  <div className="typing-avatar">
-                    <Sparkles size={17} />
-                  </div>
-
-                  <div className="typing-indicator">
-                    <span />
-                    <span />
-                    <span />
-                  </div>
+                <div className="streaming-status">
+                  <span />
+                  Nova is generating
                 </div>
               )}
 
@@ -128,7 +149,10 @@ function App() {
           )}
         </section>
 
-        <ChatInput onSend={handleSend} isLoading={isLoading} />
+        <ChatInput
+          onSend={handleSend}
+          isLoading={isLoading}
+        />
       </main>
     </div>
   );
