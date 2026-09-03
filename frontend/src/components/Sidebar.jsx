@@ -6,9 +6,11 @@ import {
   Trash2,
 } from "lucide-react";
 
+
 function Sidebar({
   chats,
   activeChatId,
+  onHome,
   onNewChat,
   onSelectChat,
   onRenameChat,
@@ -17,7 +19,13 @@ function Sidebar({
 }) {
   return (
     <aside className="sidebar">
-      <div className="brand">
+      <button
+        className="brand brand-button"
+        onClick={onHome}
+        disabled={isLoading}
+        aria-label="Go to Nova home"
+        title="Nova Home"
+      >
         <div className="brand-icon">
           <Sparkles size={22} />
         </div>
@@ -26,7 +34,7 @@ function Sidebar({
           <h1>Nova</h1>
           <span>AI Workspace</span>
         </div>
-      </div>
+      </button>
 
       <button
         className="new-chat-button"
@@ -38,31 +46,42 @@ function Sidebar({
       </button>
 
       <div className="sidebar-section chat-list-section">
-        <p className="sidebar-label">Conversations</p>
+        <p className="sidebar-label">
+          Conversations
+        </p>
 
         <div className="chat-list">
           {chats.map((chat) => {
-            const isActive = chat.id === activeChatId;
+            const isActive =
+              chat.id === activeChatId;
 
             return (
               <div
-                className={`chat-list-item ${isActive ? "active" : ""}`}
+                className={`chat-list-item ${
+                  isActive ? "active" : ""
+                }`}
                 key={chat.id}
               >
                 <button
                   className="chat-select-button"
-                  onClick={() => onSelectChat(chat.id)}
+                  onClick={() =>
+                    onSelectChat(chat.id)
+                  }
                   disabled={isLoading}
                   title={chat.title}
                 >
                   <MessageSquare size={16} />
 
-                  <span>{chat.title}</span>
+                  <span>
+                    {chat.title}
+                  </span>
                 </button>
 
                 <div className="chat-actions">
                   <button
-                    onClick={() => onRenameChat(chat.id)}
+                    onClick={() =>
+                      onRenameChat(chat.id)
+                    }
                     disabled={isLoading}
                     aria-label="Rename conversation"
                     title="Rename"
@@ -72,7 +91,9 @@ function Sidebar({
 
                   <button
                     className="delete-chat-button"
-                    onClick={() => onDeleteChat(chat.id)}
+                    onClick={() =>
+                      onDeleteChat(chat.id)
+                    }
                     disabled={isLoading}
                     aria-label="Delete conversation"
                     title="Delete"
@@ -86,18 +107,17 @@ function Sidebar({
         </div>
       </div>
 
-      <div className="sidebar-spacer" />
-
       <div className="local-status">
         <span className="status-dot" />
 
         <div>
-          <strong>Local AI</strong>
-          <p>Powered by Ollama</p>
+          <strong>Hosted AI</strong>
+          <p>Nemotron 3 Ultra</p>
         </div>
       </div>
     </aside>
   );
 }
+
 
 export default Sidebar;

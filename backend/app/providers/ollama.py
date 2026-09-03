@@ -3,38 +3,14 @@ from collections.abc import Generator
 
 import requests
 
-from app.conversation.manager import (
-    conversation_manager,
-)
 from app.core.config import (
     OLLAMA_HOST,
     OLLAMA_MODEL,
 )
 from app.providers.base import AIProvider
-from app.services.documents import (
-    document_service,
-)
 
 
 class OllamaProvider(AIProvider):
-
-    @staticmethod
-    def _build_messages(
-        message: str,
-        conversation_id: str,
-    ) -> list[dict]:
-        document_context = (
-            document_service.build_rag_context(
-                query=message,
-                conversation_id=conversation_id,
-            )
-        )
-
-        return conversation_manager.build_messages(
-            user_message=message,
-            conversation_id=conversation_id,
-            document_context=document_context,
-        )
 
     def generate(
         self,
@@ -43,7 +19,7 @@ class OllamaProvider(AIProvider):
     ) -> str:
         url = f"{OLLAMA_HOST}/api/chat"
 
-        messages = self._build_messages(
+        messages = self.build_messages(
             message=message,
             conversation_id=conversation_id,
         )
@@ -86,6 +62,7 @@ class OllamaProvider(AIProvider):
 
         try:
             data = response.json()
+
         except requests.exceptions.JSONDecodeError as error:
             raise RuntimeError(
                 "Ollama returned invalid JSON."
@@ -102,13 +79,9 @@ class OllamaProvider(AIProvider):
                 "Ollama returned an empty response."
             )
 
-        conversation_manager.save_user_message(
-            message=message,
-            conversation_id=conversation_id,
-        )
-
-        conversation_manager.save_assistant_message(
-            message=assistant_response,
+        self.save_conversation(
+            user_message=message,
+            assistant_message=assistant_response,
             conversation_id=conversation_id,
         )
 
@@ -121,7 +94,7 @@ class OllamaProvider(AIProvider):
     ) -> Generator[str, None, None]:
         url = f"{OLLAMA_HOST}/api/chat"
 
-        messages = self._build_messages(
+        messages = self.build_messages(
             message=message,
             conversation_id=conversation_id,
         )
@@ -156,6 +129,7 @@ class OllamaProvider(AIProvider):
                         data = json.loads(
                             line.decode("utf-8")
                         )
+
                     except json.JSONDecodeError as error:
                         raise RuntimeError(
                             "Ollama returned invalid "
@@ -187,8 +161,7 @@ class OllamaProvider(AIProvider):
 
         except requests.exceptions.Timeout as error:
             raise RuntimeError(
-                "Ollama streaming request "
-                "timed out."
+                "Ollama streaming request timed out."
             ) from error
 
         except requests.exceptions.ConnectionError as error:
@@ -208,12 +181,8 @@ class OllamaProvider(AIProvider):
         if not final_response:
             return
 
-        conversation_manager.save_user_message(
-            message=message,
-            conversation_id=conversation_id,
-        )
-
-        conversation_manager.save_assistant_message(
-            message=final_response,
+        self.save_conversation(
+            user_message=message,
+            assistant_message=final_response,
             conversation_id=conversation_id,
         )

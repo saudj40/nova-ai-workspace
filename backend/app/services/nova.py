@@ -1,9 +1,25 @@
 from collections.abc import Generator
 
+from app.core.config import AI_PROVIDER
+from app.providers.base import AIProvider
+from app.providers.hosted import HostedProvider
 from app.providers.ollama import OllamaProvider
 
 
-provider = OllamaProvider()
+def create_provider() -> AIProvider:
+    if AI_PROVIDER == "ollama":
+        return OllamaProvider()
+
+    if AI_PROVIDER == "hosted":
+        return HostedProvider()
+
+    raise RuntimeError(
+        f"Unsupported AI_PROVIDER: "
+        f"{AI_PROVIDER}"
+    )
+
+
+provider = create_provider()
 
 
 def generate_response(
