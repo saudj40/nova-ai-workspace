@@ -59,20 +59,6 @@ const itemAnimation = {
   },
 };
 
-function getGreeting() {
-  const hour = new Date().getHours();
-
-  if (hour < 12) {
-    return "Good morning";
-  }
-
-  if (hour < 18) {
-    return "Good afternoon";
-  }
-
-  return "Good evening";
-}
-
 function WelcomeScreen({ onSuggestionClick }) {
   return (
     <motion.section
@@ -81,7 +67,10 @@ function WelcomeScreen({ onSuggestionClick }) {
       initial="hidden"
       animate="visible"
     >
-      <motion.div className="nova-orb" variants={itemAnimation}>
+      <motion.div
+        className="nova-orb"
+        variants={itemAnimation}
+      >
         <div className="nova-orb-glow" />
         <div className="nova-orb-core" />
 
@@ -94,14 +83,17 @@ function WelcomeScreen({ onSuggestionClick }) {
         </div>
       </motion.div>
 
-      <motion.p className="welcome-kicker" variants={itemAnimation}>
+      <motion.p
+        className="welcome-kicker"
+        variants={itemAnimation}
+      >
         NOVA
         <span />
         PERSONAL AI WORKSPACE
       </motion.p>
 
       <motion.h1 variants={itemAnimation}>
-        {getGreeting()}, Saud.
+        Welcome to Nova.
       </motion.h1>
 
       <motion.h2 variants={itemAnimation}>
@@ -112,8 +104,8 @@ function WelcomeScreen({ onSuggestionClick }) {
         className="welcome-description"
         variants={itemAnimation}
       >
-        Think, build and explore with a private AI workspace designed around
-        your ideas.
+        Think, build and explore with an AI workspace designed around your
+        ideas.
       </motion.p>
 
       <motion.div
@@ -134,15 +126,27 @@ function WelcomeScreen({ onSuggestionClick }) {
               whileTap={{
                 scale: 0.985,
               }}
-              onClick={() => onSuggestionClick(suggestion.prompt)}
+              onClick={() =>
+                onSuggestionClick(
+                  suggestion.prompt
+                )
+              }
             >
               <div className="suggestion-icon">
-                <Icon size={18} strokeWidth={1.8} />
+                <Icon
+                  size={18}
+                  strokeWidth={1.8}
+                />
               </div>
 
               <div className="suggestion-copy">
-                <strong>{suggestion.title}</strong>
-                <p>{suggestion.description}</p>
+                <strong>
+                  {suggestion.title}
+                </strong>
+
+                <p>
+                  {suggestion.description}
+                </p>
               </div>
 
               <ArrowUpRight
