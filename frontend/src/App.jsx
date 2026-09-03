@@ -17,6 +17,8 @@ import ChatInput from "./components/ChatInput";
 
 import {
   deleteConversation,
+  deleteDocument,
+  getDocuments,
   streamMessage,
   uploadDocument,
 } from "./services/api";
@@ -24,12 +26,16 @@ import {
 import "./App.css";
 
 
-const STORAGE_KEY = "nova-chats";
-const ACTIVE_CHAT_KEY = "nova-active-chat";
+const STORAGE_KEY =
+  "nova-chats";
+
+const ACTIVE_CHAT_KEY =
+  "nova-active-chat";
 
 
 function createNewChat() {
-  const now = new Date().toISOString();
+  const now =
+    new Date().toISOString();
 
   return {
     id: crypto.randomUUID(),
@@ -44,25 +50,35 @@ function createNewChat() {
 function loadChats() {
   try {
     const savedChats =
-      localStorage.getItem(STORAGE_KEY);
+      localStorage.getItem(
+        STORAGE_KEY
+      );
 
     if (!savedChats) {
-      return [createNewChat()];
+      return [
+        createNewChat(),
+      ];
     }
 
     const parsedChats =
       JSON.parse(savedChats);
 
     if (
-      !Array.isArray(parsedChats) ||
+      !Array.isArray(
+        parsedChats
+      ) ||
       parsedChats.length === 0
     ) {
-      return [createNewChat()];
+      return [
+        createNewChat(),
+      ];
     }
 
     return parsedChats;
   } catch {
-    return [createNewChat()];
+    return [
+      createNewChat(),
+    ];
   }
 }
 
@@ -77,9 +93,13 @@ function App() {
   const abortControllerRef =
     useRef(null);
 
-  const [chats, setChats] = useState(
-    initialChatsRef.current
-  );
+  const documentLoadRequestRef =
+    useRef(0);
+
+  const [chats, setChats] =
+    useState(
+      initialChatsRef.current
+    );
 
   const [
     activeChatId,
@@ -93,24 +113,40 @@ function App() {
     const savedChatExists =
       initialChatsRef.current.some(
         (chat) =>
-          chat.id === savedActiveChatId
+          chat.id ===
+          savedActiveChatId
       );
 
     return savedChatExists
       ? savedActiveChatId
-      : initialChatsRef.current[0].id;
+      : initialChatsRef
+          .current[0].id;
   });
 
-  const [isLoading, setIsLoading] =
-    useState(false);
-
-  const [isUploading, setIsUploading] =
-    useState(false);
+  const [
+    isLoading,
+    setIsLoading,
+  ] = useState(false);
 
   const [
-    uploadedDocument,
-    setUploadedDocument,
+    isUploading,
+    setIsUploading,
+  ] = useState(false);
+
+  const [
+    isLoadingDocuments,
+    setIsLoadingDocuments,
+  ] = useState(false);
+
+  const [
+    deletingDocumentId,
+    setDeletingDocumentId,
   ] = useState(null);
+
+  const [
+    uploadedDocuments,
+    setUploadedDocuments,
+  ] = useState([]);
 
   const [
     sidebarOpen,
@@ -119,7 +155,8 @@ function App() {
 
   const activeChat =
     chats.find(
-      (chat) => chat.id === activeChatId
+      (chat) =>
+        chat.id === activeChatId
     ) || chats[0];
 
   const messages =
@@ -141,8 +178,72 @@ function App() {
         activeChatId
       );
     }
+  }, [activeChatId]);
 
-    setUploadedDocument(null);
+
+  useEffect(() => {
+    if (!activeChatId) {
+      setUploadedDocuments([]);
+      return;
+    }
+
+    const requestId =
+      documentLoadRequestRef
+        .current + 1;
+
+    documentLoadRequestRef
+      .current = requestId;
+
+    async function loadDocuments() {
+      setIsLoadingDocuments(
+        true
+      );
+
+      try {
+        const documents =
+          await getDocuments(
+            activeChatId
+          );
+
+        if (
+          documentLoadRequestRef
+            .current !== requestId
+        ) {
+          return;
+        }
+
+        setUploadedDocuments(
+          documents
+        );
+      } catch (error) {
+        if (
+          documentLoadRequestRef
+            .current !== requestId
+        ) {
+          return;
+        }
+
+        console.error(
+          "Could not load documents:",
+          error
+        );
+
+        setUploadedDocuments(
+          []
+        );
+      } finally {
+        if (
+          documentLoadRequestRef
+            .current === requestId
+        ) {
+          setIsLoadingDocuments(
+            false
+          );
+        }
+      }
+    }
+
+    loadDocuments();
   }, [activeChatId]);
 
 
@@ -155,15 +256,21 @@ function App() {
     }
 
     conversationArea.scrollTo({
-      top: conversationArea.scrollHeight,
+      top:
+        conversationArea
+          .scrollHeight,
       behavior: "smooth",
     });
-  }, [messages, isLoading]);
+  }, [
+    messages,
+    isLoading,
+  ]);
 
 
   useEffect(() => {
     return () => {
-      abortControllerRef.current?.abort();
+      abortControllerRef
+        .current?.abort();
     };
   }, []);
 
@@ -172,26 +279,35 @@ function App() {
     chatId,
     updater
   ) {
-    setChats((currentChats) =>
-      currentChats.map((chat) => {
-        if (chat.id !== chatId) {
-          return chat;
-        }
+    setChats(
+      (currentChats) =>
+        currentChats.map(
+          (chat) => {
+            if (
+              chat.id !== chatId
+            ) {
+              return chat;
+            }
 
-        return {
-          ...chat,
-          messages: updater(
-            chat.messages
-          ),
-          updatedAt:
-            new Date().toISOString(),
-        };
-      })
+            return {
+              ...chat,
+              messages:
+                updater(
+                  chat.messages
+                ),
+              updatedAt:
+                new Date()
+                  .toISOString(),
+            };
+          }
+        )
     );
   }
 
 
-  async function handleSend(message) {
+  async function handleSend(
+    message
+  ) {
     const trimmedMessage =
       message.trim();
 
@@ -210,14 +326,16 @@ function App() {
     const userMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      content: trimmedMessage,
+      content:
+        trimmedMessage,
     };
 
     const assistantMessageId =
       crypto.randomUUID();
 
     const assistantMessage = {
-      id: assistantMessageId,
+      id:
+        assistantMessageId,
       role: "assistant",
       content: "",
     };
@@ -225,42 +343,52 @@ function App() {
     const controller =
       new AbortController();
 
-    abortControllerRef.current =
-      controller;
+    abortControllerRef
+      .current = controller;
 
-    setChats((currentChats) =>
-      currentChats.map((chat) => {
-        if (chat.id !== targetChatId) {
-          return chat;
-        }
+    setChats(
+      (currentChats) =>
+        currentChats.map(
+          (chat) => {
+            if (
+              chat.id !==
+              targetChatId
+            ) {
+              return chat;
+            }
 
-        const shouldCreateTitle =
-          chat.title ===
-            "New conversation" &&
-          chat.messages.length === 0;
+            const shouldCreateTitle =
+              chat.title ===
+                "New conversation" &&
+              chat.messages
+                .length === 0;
 
-        const generatedTitle =
-          trimmedMessage.length > 32
-            ? `${trimmedMessage.slice(
-                0,
-                32
-              )}...`
-            : trimmedMessage;
+            const generatedTitle =
+              trimmedMessage
+                .length > 32
+                ? `${trimmedMessage.slice(
+                    0,
+                    32
+                  )}...`
+                : trimmedMessage;
 
-        return {
-          ...chat,
-          title: shouldCreateTitle
-            ? generatedTitle
-            : chat.title,
-          messages: [
-            ...chat.messages,
-            userMessage,
-            assistantMessage,
-          ],
-          updatedAt:
-            new Date().toISOString(),
-        };
-      })
+            return {
+              ...chat,
+              title:
+                shouldCreateTitle
+                  ? generatedTitle
+                  : chat.title,
+              messages: [
+                ...chat.messages,
+                userMessage,
+                assistantMessage,
+              ],
+              updatedAt:
+                new Date()
+                  .toISOString(),
+            };
+          }
+        )
     );
 
     setIsLoading(true);
@@ -272,15 +400,20 @@ function App() {
         (chunk) => {
           updateChatMessages(
             targetChatId,
-            (currentMessages) =>
+            (
+              currentMessages
+            ) =>
               currentMessages.map(
-                (currentMessage) =>
+                (
+                  currentMessage
+                ) =>
                   currentMessage.id ===
                   assistantMessageId
                     ? {
                         ...currentMessage,
                         content:
-                          currentMessage.content +
+                          currentMessage
+                            .content +
                           chunk,
                       }
                     : currentMessage
@@ -290,12 +423,19 @@ function App() {
         controller.signal
       );
     } catch (error) {
-      if (error.name === "AbortError") {
+      if (
+        error.name ===
+        "AbortError"
+      ) {
         updateChatMessages(
           targetChatId,
-          (currentMessages) =>
+          (
+            currentMessages
+          ) =>
             currentMessages.map(
-              (currentMessage) => {
+              (
+                currentMessage
+              ) => {
                 if (
                   currentMessage.id !==
                   assistantMessageId
@@ -304,13 +444,16 @@ function App() {
                 }
 
                 const existingContent =
-                  currentMessage.content.trim();
+                  currentMessage
+                    .content
+                    .trim();
 
                 return {
                   ...currentMessage,
-                  content: existingContent
-                    ? `${currentMessage.content}\n\n*Generation stopped.*`
-                    : "*Generation stopped.*",
+                  content:
+                    existingContent
+                      ? `${currentMessage.content}\n\n*Generation stopped.*`
+                      : "*Generation stopped.*",
                 };
               }
             )
@@ -318,9 +461,13 @@ function App() {
       } else {
         updateChatMessages(
           targetChatId,
-          (currentMessages) =>
+          (
+            currentMessages
+          ) =>
             currentMessages.map(
-              (currentMessage) =>
+              (
+                currentMessage
+              ) =>
                 currentMessage.id ===
                 assistantMessageId
                   ? {
@@ -333,7 +480,9 @@ function App() {
         );
       }
     } finally {
-      abortControllerRef.current = null;
+      abortControllerRef
+        .current = null;
+
       setIsLoading(false);
     }
   }
@@ -342,16 +491,20 @@ function App() {
   function handleStopGeneration() {
     if (
       !isLoading ||
-      !abortControllerRef.current
+      !abortControllerRef
+        .current
     ) {
       return;
     }
 
-    abortControllerRef.current.abort();
+    abortControllerRef
+      .current.abort();
   }
 
 
-  async function handleUploadDocument(file) {
+  async function handleUploadDocument(
+    file
+  ) {
     if (
       !activeChat ||
       isLoading ||
@@ -361,14 +514,16 @@ function App() {
     }
 
     const isPdf =
-      file.type === "application/pdf" ||
+      file.type ===
+        "application/pdf" ||
       file.name
         .toLowerCase()
         .endsWith(".pdf");
 
     if (!isPdf) {
       window.alert(
-        "Please select a PDF file."
+        "Please select "
+          + "a PDF file."
       );
 
       return;
@@ -383,11 +538,75 @@ function App() {
           activeChat.id
         );
 
-      setUploadedDocument(document);
+      setUploadedDocuments(
+        (
+          currentDocuments
+        ) => [
+          document,
+          ...currentDocuments,
+        ]
+      );
     } catch (error) {
-      window.alert(error.message);
+      window.alert(
+        error.message
+      );
     } finally {
       setIsUploading(false);
+    }
+  }
+
+
+  async function handleDeleteDocument(
+    document
+  ) {
+    if (
+      !activeChat ||
+      isLoading ||
+      isUploading ||
+      deletingDocumentId
+    ) {
+      return;
+    }
+
+    const shouldDelete =
+      window.confirm(
+        `Remove "${document.filename}" from this conversation?`
+      );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    setDeletingDocumentId(
+      document.id
+    );
+
+    try {
+      await deleteDocument(
+        activeChat.id,
+        document.id
+      );
+
+      setUploadedDocuments(
+        (
+          currentDocuments
+        ) =>
+          currentDocuments.filter(
+            (
+              currentDocument
+            ) =>
+              currentDocument.id !==
+              document.id
+          )
+      );
+    } catch (error) {
+      window.alert(
+        error.message
+      );
+    } finally {
+      setDeletingDocumentId(
+        null
+      );
     }
   }
 
@@ -395,7 +614,8 @@ function App() {
   function handleNewChat() {
     if (
       isLoading ||
-      isUploading
+      isUploading ||
+      deletingDocumentId
     ) {
       return;
     }
@@ -403,7 +623,8 @@ function App() {
     const emptyExistingChat =
       chats.find(
         (chat) =>
-          chat.messages.length === 0
+          chat.messages
+            .length === 0
       );
 
     if (emptyExistingChat) {
@@ -411,56 +632,69 @@ function App() {
         emptyExistingChat.id
       );
 
-      setUploadedDocument(null);
       return;
     }
 
-    const newChat = createNewChat();
+    const newChat =
+      createNewChat();
 
-    setChats((currentChats) => [
-      newChat,
-      ...currentChats,
-    ]);
+    setChats(
+      (currentChats) => [
+        newChat,
+        ...currentChats,
+      ]
+    );
 
-    setActiveChatId(newChat.id);
-    setUploadedDocument(null);
+    setActiveChatId(
+      newChat.id
+    );
   }
 
 
-  function handleSelectChat(chatId) {
+  function handleSelectChat(
+    chatId
+  ) {
     if (
       isLoading ||
-      isUploading
+      isUploading ||
+      deletingDocumentId
     ) {
       return;
     }
 
     setActiveChatId(chatId);
-    setUploadedDocument(null);
   }
 
 
-  function handleRenameChat(chatId) {
+  function handleRenameChat(
+    chatId
+  ) {
     if (
       isLoading ||
-      isUploading
+      isUploading ||
+      deletingDocumentId
     ) {
       return;
     }
 
-    const chat = chats.find(
-      (currentChat) =>
-        currentChat.id === chatId
-    );
+    const chat =
+      chats.find(
+        (
+          currentChat
+        ) =>
+          currentChat.id ===
+          chatId
+      );
 
     if (!chat) {
       return;
     }
 
-    const newTitle = window.prompt(
-      "Rename conversation:",
-      chat.title
-    );
+    const newTitle =
+      window.prompt(
+        "Rename conversation:",
+        chat.title
+      );
 
     const trimmedTitle =
       newTitle?.trim();
@@ -469,34 +703,47 @@ function App() {
       return;
     }
 
-    setChats((currentChats) =>
-      currentChats.map(
-        (currentChat) =>
-          currentChat.id === chatId
-            ? {
-                ...currentChat,
-                title: trimmedTitle,
-                updatedAt:
-                  new Date().toISOString(),
-              }
-            : currentChat
-      )
+    setChats(
+      (currentChats) =>
+        currentChats.map(
+          (
+            currentChat
+          ) =>
+            currentChat.id ===
+            chatId
+              ? {
+                  ...currentChat,
+                  title:
+                    trimmedTitle,
+                  updatedAt:
+                    new Date()
+                      .toISOString(),
+                }
+              : currentChat
+        )
     );
   }
 
 
-  async function handleDeleteChat(chatId) {
+  async function handleDeleteChat(
+    chatId
+  ) {
     if (
       isLoading ||
-      isUploading
+      isUploading ||
+      deletingDocumentId
     ) {
       return;
     }
 
-    const chat = chats.find(
-      (currentChat) =>
-        currentChat.id === chatId
-    );
+    const chat =
+      chats.find(
+        (
+          currentChat
+        ) =>
+          currentChat.id ===
+          chatId
+      );
 
     if (!chat) {
       return;
@@ -512,37 +759,54 @@ function App() {
     }
 
     try {
-      await deleteConversation(chatId);
+      await deleteConversation(
+        chatId
+      );
     } catch (error) {
-      window.alert(error.message);
+      window.alert(
+        error.message
+      );
+
       return;
     }
 
     const remainingChats =
       chats.filter(
-        (currentChat) =>
-          currentChat.id !== chatId
+        (
+          currentChat
+        ) =>
+          currentChat.id !==
+          chatId
       );
 
-    if (remainingChats.length === 0) {
+    if (
+      remainingChats.length ===
+      0
+    ) {
       const newChat =
         createNewChat();
 
-      setChats([newChat]);
-      setActiveChatId(newChat.id);
-      setUploadedDocument(null);
+      setChats([
+        newChat,
+      ]);
+
+      setActiveChatId(
+        newChat.id
+      );
 
       return;
     }
 
-    setChats(remainingChats);
+    setChats(
+      remainingChats
+    );
 
-    if (activeChatId === chatId) {
+    if (
+      activeChatId === chatId
+    ) {
       setActiveChatId(
         remainingChats[0].id
       );
-
-      setUploadedDocument(null);
     }
   }
 
@@ -550,16 +814,22 @@ function App() {
   return (
     <div className="app-shell">
       <div
-        className={`sidebar-wrapper ${
-          sidebarOpen
-            ? "open"
-            : "closed"
-        }`}
+        className={
+          `sidebar-wrapper ${
+            sidebarOpen
+              ? "open"
+              : "closed"
+          }`
+        }
       >
         <Sidebar
           chats={chats}
-          activeChatId={activeChatId}
-          onNewChat={handleNewChat}
+          activeChatId={
+            activeChatId
+          }
+          onNewChat={
+            handleNewChat
+          }
           onSelectChat={
             handleSelectChat
           }
@@ -571,7 +841,10 @@ function App() {
           }
           isLoading={
             isLoading ||
-            isUploading
+            isUploading ||
+            Boolean(
+              deletingDocumentId
+            )
           }
         />
       </div>
@@ -582,7 +855,8 @@ function App() {
             className="icon-button"
             onClick={() =>
               setSidebarOpen(
-                (current) => !current
+                (current) =>
+                  !current
               )
             }
             aria-label="Toggle sidebar"
@@ -592,15 +866,20 @@ function App() {
                 size={20}
               />
             ) : (
-              <Menu size={20} />
+              <Menu
+                size={20}
+              />
             )}
           </button>
 
           <div className="topbar-title">
-            <Sparkles size={17} />
+            <Sparkles
+              size={17}
+            />
 
             <span>
-              {activeChat?.title ||
+              {activeChat
+                ?.title ||
                 "Nova"}
             </span>
           </div>
@@ -612,10 +891,13 @@ function App() {
         </header>
 
         <section
-          ref={conversationAreaRef}
+          ref={
+            conversationAreaRef
+          }
           className="conversation-area"
         >
-          {messages.length === 0 ? (
+          {messages.length ===
+          0 ? (
             <WelcomeScreen
               onSuggestionClick={
                 handleSend
@@ -624,10 +906,16 @@ function App() {
           ) : (
             <div className="messages-container">
               {messages.map(
-                (message) => (
+                (
+                  message
+                ) => (
                   <MessageBubble
-                    key={message.id}
-                    message={message}
+                    key={
+                      message.id
+                    }
+                    message={
+                      message
+                    }
                   />
                 )
               )}
@@ -643,18 +931,31 @@ function App() {
         </section>
 
         <ChatInput
-          onSend={handleSend}
+          onSend={
+            handleSend
+          }
           onStop={
             handleStopGeneration
           }
           onUploadDocument={
             handleUploadDocument
           }
-          uploadedDocument={
-            uploadedDocument
+          onDeleteDocument={
+            handleDeleteDocument
           }
-          isLoading={isLoading}
-          isUploading={isUploading}
+          uploadedDocuments={
+            uploadedDocuments
+          }
+          isLoading={
+            isLoading
+          }
+          isUploading={
+            isUploading ||
+            isLoadingDocuments
+          }
+          deletingDocumentId={
+            deletingDocumentId
+          }
         />
       </main>
     </div>

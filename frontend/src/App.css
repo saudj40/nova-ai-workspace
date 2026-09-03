@@ -1605,3 +1605,59 @@ textarea:focus-visible {
 .document-pill-close {
   opacity: 0.55;
 }
+.document-list {
+  width: min(
+    var(--content-width),
+    100%
+  );
+
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+
+  margin: 0 auto 9px;
+}
+
+.document-list .document-pill {
+  width: 100%;
+  margin: 0;
+}
+
+.document-remove-button {
+  width: 24px;
+  height: 24px;
+
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  padding: 0;
+
+  border: none;
+  border-radius: 6px;
+
+  color: var(--text-muted);
+  background: transparent;
+
+  cursor: pointer;
+
+  transition:
+    color 150ms ease,
+    background 150ms ease;
+}
+
+.document-remove-button:hover:not(:disabled) {
+  color: #f1a36a;
+  background: rgba(
+    237,
+    154,
+    90,
+    0.1
+  );
+}
+
+.document-remove-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

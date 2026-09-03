@@ -220,3 +220,12 @@ __marimo__/
 backend/data/*.db
 backend/data/*.db-shm
 backend/data/*.db-wal
+# Nova runtime document data
+backend/data/documents/
+
+# Frontend dependencies and builds
+frontend/node_modules/
+frontend/dist/
+
+# Local helper files
+project-tree.txt

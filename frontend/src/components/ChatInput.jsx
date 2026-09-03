@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+
 import {
   ArrowUp,
   CornerDownLeft,
@@ -21,15 +22,20 @@ function ChatInput({
   onSend,
   onStop,
   onUploadDocument,
-  uploadedDocument,
+  onDeleteDocument,
+  uploadedDocuments,
   isLoading,
   isUploading,
+  deletingDocumentId,
 }) {
   const [input, setInput] =
     useState("");
 
-  const textareaRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const textareaRef =
+    useRef(null);
+
+  const fileInputRef =
+    useRef(null);
 
 
   useEffect(() => {
@@ -40,7 +46,8 @@ function ChatInput({
       return;
     }
 
-    textarea.style.height = "auto";
+    textarea.style.height =
+      "auto";
 
     textarea.style.height =
       `${Math.min(
@@ -56,7 +63,8 @@ function ChatInput({
 
     if (
       !trimmedMessage ||
-      isLoading
+      isLoading ||
+      isUploading
     ) {
       return;
     }
@@ -77,7 +85,9 @@ function ChatInput({
   }
 
 
-  function handleFileChange(event) {
+  function handleFileChange(
+    event
+  ) {
     const file =
       event.target.files?.[0];
 
@@ -91,25 +101,68 @@ function ChatInput({
   }
 
 
+  const hasDocuments =
+    uploadedDocuments.length > 0;
+
+
   return (
     <div className="input-area">
-      {uploadedDocument && (
-        <div className="document-pill">
-          <FileText size={15} />
+      {hasDocuments && (
+        <div className="document-list">
+          {uploadedDocuments.map(
+            (document) => (
+              <div
+                key={document.id}
+                className="document-pill"
+              >
+                <FileText
+                  size={15}
+                />
 
-          <span>
-            {uploadedDocument.filename}
-          </span>
+                <span>
+                  {document.filename}
+                </span>
 
-          <small>
-            {uploadedDocument.page_count}
-            {" "}pages
-          </small>
+                <small>
+                  {
+                    document.page_count
+                  }{" "}
+                  {document.page_count === 1
+                    ? "page"
+                    : "pages"}
+                </small>
 
-          <X
-            className="document-pill-close"
-            size={14}
-          />
+                <button
+                  className="document-remove-button"
+                  onClick={() =>
+                    onDeleteDocument(
+                      document
+                    )
+                  }
+                  disabled={
+                    isLoading ||
+                    isUploading ||
+                    deletingDocumentId ===
+                      document.id
+                  }
+                  aria-label={
+                    `Remove ${document.filename}`
+                  }
+                  title="Remove document"
+                >
+                  {deletingDocumentId ===
+                  document.id ? (
+                    <LoaderCircle
+                      className="spinner"
+                      size={14}
+                    />
+                  ) : (
+                    <X size={14} />
+                  )}
+                </button>
+              </div>
+            )
+          )}
         </div>
       )}
 
@@ -126,7 +179,12 @@ function ChatInput({
         transition={{
           duration: 0.5,
           delay: 0.15,
-          ease: [0.22, 1, 0.36, 1],
+          ease: [
+            0.22,
+            1,
+            0.36,
+            1,
+          ],
         }}
       >
         <div className="composer-brand">
@@ -139,7 +197,8 @@ function ChatInput({
         <button
           className="attachment-button"
           onClick={() =>
-            fileInputRef.current?.click()
+            fileInputRef.current
+              ?.click()
           }
           disabled={
             isLoading ||
@@ -154,7 +213,9 @@ function ChatInput({
               size={17}
             />
           ) : (
-            <Paperclip size={17} />
+            <Paperclip
+              size={17}
+            />
           )}
         </button>
 
@@ -163,7 +224,9 @@ function ChatInput({
           className="hidden-file-input"
           type="file"
           accept=".pdf,application/pdf"
-          onChange={handleFileChange}
+          onChange={
+            handleFileChange
+          }
         />
 
         <textarea
@@ -174,13 +237,17 @@ function ChatInput({
               event.target.value
             )
           }
-          onKeyDown={handleKeyDown}
+          onKeyDown={
+            handleKeyDown
+          }
           placeholder={
             isUploading
               ? "Processing your PDF..."
               : isLoading
                 ? "Nova is responding..."
-                : "Ask Nova anything..."
+                : hasDocuments
+                  ? "Ask Nova about your documents..."
+                  : "Ask Nova anything..."
           }
           rows="1"
           disabled={
@@ -196,7 +263,10 @@ function ChatInput({
               <CornerDownLeft
                 size={13}
               />
-              <span>Enter</span>
+
+              <span>
+                Enter
+              </span>
             </div>
           )}
 
@@ -222,7 +292,9 @@ function ChatInput({
           ) : (
             <motion.button
               className="send-button"
-              onClick={submitMessage}
+              onClick={
+                submitMessage
+              }
               disabled={
                 !input.trim() ||
                 isUploading
@@ -253,8 +325,9 @@ function ChatInput({
       </motion.div>
 
       <p className="input-hint">
-        Upload a PDF or ask Nova
-        anything.
+        {hasDocuments
+          ? "Nova can use the uploaded documents as context."
+          : "Upload a PDF or ask Nova anything."}
       </p>
     </div>
   );

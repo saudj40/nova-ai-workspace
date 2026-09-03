@@ -1,5 +1,6 @@
 import json
 import re
+import shutil
 from io import BytesIO
 from pathlib import Path
 from threading import Lock
@@ -71,7 +72,7 @@ class DocumentService:
 
         if not cleaned_value:
             raise ValueError(
-                "Invalid conversation identifier."
+                "Invalid identifier."
             )
 
         return cleaned_value
@@ -80,10 +81,17 @@ class DocumentService:
     def _clean_text(
         text: str,
     ) -> str:
-        text = text.replace("\x00", " ")
+        text = text.replace(
+            "\x00",
+            " ",
+        )
 
         lines = [
-            re.sub(r"\s+", " ", line).strip()
+            re.sub(
+                r"\s+",
+                " ",
+                line,
+            ).strip()
             for line in text.splitlines()
         ]
 
@@ -216,7 +224,9 @@ class DocumentService:
                 if best_break >= minimum_break:
                     end = best_break + 1
 
-            chunk = text[start:end].strip()
+            chunk = text[
+                start:end
+            ].strip()
 
             if chunk:
                 chunks.append(chunk)
@@ -225,7 +235,8 @@ class DocumentService:
                 break
 
             next_start = (
-                end - self.CHUNK_OVERLAP
+                end
+                - self.CHUNK_OVERLAP
             )
 
             if next_start <= start:
@@ -248,11 +259,16 @@ class DocumentService:
 
             page_text = page["text"]
 
-            page_chunks = self._split_text(
-                page_text
+            page_chunks = (
+                self._split_text(
+                    page_text
+                )
             )
 
-            for chunk_index, chunk_text in enumerate(
+            for (
+                chunk_index,
+                chunk_text,
+            ) in enumerate(
                 page_chunks,
                 start=1,
             ):
@@ -262,8 +278,12 @@ class DocumentService:
                             f"page-{page_number}"
                             f"-chunk-{chunk_index}"
                         ),
-                        "page_number": page_number,
-                        "text": chunk_text,
+                        "page_number": (
+                            page_number
+                        ),
+                        "text": (
+                            chunk_text
+                        ),
                     }
                 )
 
@@ -276,7 +296,9 @@ class DocumentService:
         if not chunks:
             return chunks
 
-        model = self._get_embedding_model()
+        model = (
+            self._get_embedding_model()
+        )
 
         chunk_texts = [
             chunk["text"]
@@ -319,7 +341,8 @@ class DocumentService:
             > self.MAX_FILE_SIZE
         ):
             raise ValueError(
-                "The PDF exceeds the 15 MB limit."
+                "The PDF exceeds the "
+                "15 MB limit."
             )
 
         if (
@@ -345,20 +368,30 @@ class DocumentService:
             )
         )
 
-        pages, full_text = self.extract_pdf(
-            file_content
+        pages, full_text = (
+            self.extract_pdf(
+                file_content
+            )
         )
 
-        chunks = self._create_chunks(pages)
-        chunks = self._embed_chunks(chunks)
+        chunks = self._create_chunks(
+            pages
+        )
+
+        chunks = self._embed_chunks(
+            chunks
+        )
 
         if not chunks:
             raise ValueError(
-                "No usable text chunks could "
-                "be created from this PDF."
+                "No usable text chunks "
+                "could be created from "
+                "this PDF."
             )
 
-        document_id = str(uuid4())
+        document_id = str(
+            uuid4()
+        )
 
         conversation_directory = (
             self.documents_directory
@@ -377,12 +410,16 @@ class DocumentService:
             ),
             "filename": filename,
             "content_type": content_type,
-            "file_size": len(file_content),
+            "file_size": len(
+                file_content
+            ),
             "page_count": len(pages),
             "character_count": len(
                 full_text
             ),
-            "chunk_count": len(chunks),
+            "chunk_count": len(
+                chunks
+            ),
             "pages": pages,
             "full_text": full_text,
             "chunks": chunks,
@@ -409,7 +446,9 @@ class DocumentService:
             "character_count": len(
                 full_text
             ),
-            "chunk_count": len(chunks),
+            "chunk_count": len(
+                chunks
+            ),
             "message": (
                 "PDF uploaded, processed, "
                 "and indexed successfully."
@@ -437,10 +476,14 @@ class DocumentService:
         )
 
         needs_indexing = (
-            not isinstance(chunks, list)
+            not isinstance(
+                chunks,
+                list,
+            )
             or not chunks
             or any(
-                "embedding" not in chunk
+                "embedding"
+                not in chunk
                 for chunk in chunks
             )
         )
@@ -451,12 +494,16 @@ class DocumentService:
                 [],
             )
 
-            chunks = self._create_chunks(
-                pages
+            chunks = (
+                self._create_chunks(
+                    pages
+                )
             )
 
-            chunks = self._embed_chunks(
-                chunks
+            chunks = (
+                self._embed_chunks(
+                    chunks
+                )
             )
 
             document_data[
@@ -496,15 +543,21 @@ class DocumentService:
             / safe_conversation_id
         )
 
-        if not conversation_directory.exists():
+        if (
+            not conversation_directory.exists()
+        ):
             return []
 
         documents = []
 
-        for document_path in (
+        for document_path in sorted(
             conversation_directory.glob(
                 "*.json"
-            )
+            ),
+            key=lambda path: (
+                path.stat().st_mtime
+            ),
+            reverse=True,
         ):
             data = self._load_document(
                 document_path
@@ -523,9 +576,10 @@ class DocumentService:
                         data["page_count"]
                     ),
                     "character_count": (
-                        data[
-                            "character_count"
-                        ]
+                        data.get(
+                            "character_count",
+                            0,
+                        )
                     ),
                     "chunk_count": (
                         data.get(
@@ -537,6 +591,84 @@ class DocumentService:
             )
 
         return documents
+
+    def delete_document(
+        self,
+        conversation_id: str,
+        document_id: str,
+    ) -> bool:
+        safe_conversation_id = (
+            self._safe_identifier(
+                conversation_id
+            )
+        )
+
+        safe_document_id = (
+            self._safe_identifier(
+                document_id
+            )
+        )
+
+        conversation_directory = (
+            self.documents_directory
+            / safe_conversation_id
+        )
+
+        document_path = (
+            conversation_directory
+            / f"{safe_document_id}.json"
+        )
+
+        if not document_path.exists():
+            return False
+
+        try:
+            document_path.unlink()
+        except OSError as error:
+            raise RuntimeError(
+                "Could not delete "
+                "the document."
+            ) from error
+
+        try:
+            has_documents = any(
+                conversation_directory.glob(
+                    "*.json"
+                )
+            )
+
+            if (
+                conversation_directory.exists()
+                and not has_documents
+            ):
+                conversation_directory.rmdir()
+        except OSError:
+            pass
+
+        return True
+
+    def delete_conversation_documents(
+        self,
+        conversation_id: str,
+    ) -> None:
+        safe_conversation_id = (
+            self._safe_identifier(
+                conversation_id
+            )
+        )
+
+        conversation_directory = (
+            self.documents_directory
+            / safe_conversation_id
+        )
+
+        if (
+            conversation_directory.exists()
+        ):
+            shutil.rmtree(
+                conversation_directory,
+                ignore_errors=True,
+            )
 
     def retrieve_context(
         self,
@@ -555,7 +687,9 @@ class DocumentService:
             / safe_conversation_id
         )
 
-        if not conversation_directory.exists():
+        if (
+            not conversation_directory.exists()
+        ):
             return []
 
         all_chunks = []
@@ -574,19 +708,25 @@ class DocumentService:
             if not document_data:
                 continue
 
-            filename = document_data.get(
-                "filename",
-                "Unknown document",
+            filename = (
+                document_data.get(
+                    "filename",
+                    "Unknown document",
+                )
             )
 
-            document_id = document_data.get(
-                "id",
-                document_path.stem,
+            document_id = (
+                document_data.get(
+                    "id",
+                    document_path.stem,
+                )
             )
 
-            for chunk in document_data.get(
-                "chunks",
-                [],
+            for chunk in (
+                document_data.get(
+                    "chunks",
+                    [],
+                )
             ):
                 embedding = chunk.get(
                     "embedding"
@@ -600,37 +740,49 @@ class DocumentService:
                         "document_id": (
                             document_id
                         ),
-                        "filename": filename,
+                        "filename": (
+                            filename
+                        ),
                         "page_number": (
                             chunk[
                                 "page_number"
                             ]
                         ),
-                        "text": chunk[
-                            "text"
-                        ],
-                        "embedding": embedding,
+                        "text": (
+                            chunk["text"]
+                        ),
+                        "embedding": (
+                            embedding
+                        ),
                     }
                 )
 
         if not all_chunks:
             return []
 
-        model = self._get_embedding_model()
+        model = (
+            self._get_embedding_model()
+        )
 
         query_embedding = model.encode(
             query,
             convert_to_numpy=True,
             normalize_embeddings=True,
             show_progress_bar=False,
-        ).astype(np.float32)
+        ).astype(
+            np.float32
+        )
 
         scored_chunks = []
 
         for chunk in all_chunks:
-            chunk_embedding = np.asarray(
-                chunk["embedding"],
-                dtype=np.float32,
+            chunk_embedding = (
+                np.asarray(
+                    chunk[
+                        "embedding"
+                    ],
+                    dtype=np.float32,
+                )
             )
 
             score = float(
@@ -648,20 +800,26 @@ class DocumentService:
                         ]
                     ),
                     "filename": (
-                        chunk["filename"]
+                        chunk[
+                            "filename"
+                        ]
                     ),
                     "page_number": (
                         chunk[
                             "page_number"
                         ]
                     ),
-                    "text": chunk["text"],
+                    "text": (
+                        chunk["text"]
+                    ),
                     "score": score,
                 }
             )
 
         scored_chunks.sort(
-            key=lambda item: item["score"],
+            key=lambda item: (
+                item["score"]
+            ),
             reverse=True,
         )
 
@@ -679,9 +837,13 @@ class DocumentService:
         query: str,
         conversation_id: str,
     ) -> str | None:
-        results = self.retrieve_context(
-            query=query,
-            conversation_id=conversation_id,
+        results = (
+            self.retrieve_context(
+                query=query,
+                conversation_id=(
+                    conversation_id
+                ),
+            )
         )
 
         if not results:
@@ -689,7 +851,10 @@ class DocumentService:
 
         context_sections = []
 
-        for index, result in enumerate(
+        for (
+            index,
+            result,
+        ) in enumerate(
             results,
             start=1,
         ):

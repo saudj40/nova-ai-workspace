@@ -11,11 +11,10 @@ function createSmoothWriter(onChunk) {
   let resolveFinished;
   let hasResolved = false;
 
-  const finishedPromise = new Promise(
-    (resolve) => {
+  const finishedPromise =
+    new Promise((resolve) => {
       resolveFinished = resolve;
-    }
-  );
+    });
 
   function resolveOnce() {
     if (hasResolved) {
@@ -57,10 +56,11 @@ function createSmoothWriter(onChunk) {
       const charactersToWrite =
         getCharactersPerFrame();
 
-      const visibleText = buffer.slice(
-        0,
-        charactersToWrite
-      );
+      const visibleText =
+        buffer.slice(
+          0,
+          charactersToWrite
+        );
 
       buffer = buffer.slice(
         charactersToWrite
@@ -121,7 +121,9 @@ function createSmoothWriter(onChunk) {
       cancelled = true;
       buffer = "";
 
-      if (animationFrameId !== null) {
+      if (
+        animationFrameId !== null
+      ) {
         window.cancelAnimationFrame(
           animationFrameId
         );
@@ -136,6 +138,24 @@ function createSmoothWriter(onChunk) {
       return finishedPromise;
     },
   };
+}
+
+
+async function getErrorMessage(
+  response,
+  fallbackMessage
+) {
+  try {
+    const errorData =
+      await response.json();
+
+    return (
+      errorData.detail ||
+      fallbackMessage
+    );
+  } catch {
+    return fallbackMessage;
+  }
 }
 
 
@@ -166,7 +186,9 @@ export async function streamMessage(
       }
     );
   } catch (error) {
-    if (error.name === "AbortError") {
+    if (
+      error.name === "AbortError"
+    ) {
       throw error;
     }
 
@@ -177,19 +199,12 @@ export async function streamMessage(
   }
 
   if (!response.ok) {
-    let errorMessage =
-      "Nova encountered an unexpected error.";
-
-    try {
-      const errorData =
-        await response.json();
-
-      errorMessage =
-        errorData.detail ||
-        errorMessage;
-    } catch {
-      // Response was not JSON.
-    }
+    const errorMessage =
+      await getErrorMessage(
+        response,
+        "Nova encountered "
+          + "an unexpected error."
+      );
 
     throw new Error(errorMessage);
   }
@@ -204,7 +219,8 @@ export async function streamMessage(
   const reader =
     response.body.getReader();
 
-  const decoder = new TextDecoder();
+  const decoder =
+    new TextDecoder();
 
   smoothWriter =
     createSmoothWriter(onChunk);
@@ -235,9 +251,12 @@ export async function streamMessage(
       }
 
       const receivedText =
-        decoder.decode(value, {
-          stream: true,
-        });
+        decoder.decode(
+          value,
+          {
+            stream: true,
+          }
+        );
 
       smoothWriter.push(
         receivedText
@@ -250,7 +269,8 @@ export async function streamMessage(
 
     smoothWriter.finish();
 
-    await smoothWriter.waitUntilFinished();
+    await smoothWriter
+      .waitUntilFinished();
   } catch (error) {
     smoothWriter.cancel();
 
@@ -284,7 +304,8 @@ export async function uploadDocument(
   file,
   conversationId
 ) {
-  const formData = new FormData();
+  const formData =
+    new FormData();
 
   formData.append(
     "conversation_id",
@@ -308,24 +329,18 @@ export async function uploadDocument(
     );
   } catch {
     throw new Error(
-      "Cannot connect to Nova's backend."
+      "Cannot connect to "
+      + "Nova's backend."
     );
   }
 
   if (!response.ok) {
-    let errorMessage =
-      "The PDF could not be uploaded.";
-
-    try {
-      const errorData =
-        await response.json();
-
-      errorMessage =
-        errorData.detail ||
-        errorMessage;
-    } catch {
-      // Response was not JSON.
-    }
+    const errorMessage =
+      await getErrorMessage(
+        response,
+        "The PDF could "
+          + "not be uploaded."
+      );
 
     throw new Error(errorMessage);
   }
@@ -337,21 +352,73 @@ export async function uploadDocument(
 export async function getDocuments(
   conversationId
 ) {
-  const response = await fetch(
-    `${API_URL}/documents/conversation/${encodeURIComponent(
-      conversationId
-    )}`
-  );
+  let response;
 
-  if (!response.ok) {
+  try {
+    response = await fetch(
+      `${API_URL}/documents/conversation/${encodeURIComponent(
+        conversationId
+      )}`
+    );
+  } catch {
     throw new Error(
-      "Could not load conversation documents."
+      "Cannot connect to "
+      + "Nova's backend."
     );
   }
 
-  const data = await response.json();
+  if (!response.ok) {
+    const errorMessage =
+      await getErrorMessage(
+        response,
+        "Could not load "
+          + "conversation documents."
+      );
 
-  return data.documents;
+    throw new Error(errorMessage);
+  }
+
+  const data =
+    await response.json();
+
+  return data.documents || [];
+}
+
+
+export async function deleteDocument(
+  conversationId,
+  documentId
+) {
+  let response;
+
+  try {
+    response = await fetch(
+      `${API_URL}/documents/conversation/${encodeURIComponent(
+        conversationId
+      )}/${encodeURIComponent(
+        documentId
+      )}`,
+      {
+        method: "DELETE",
+      }
+    );
+  } catch {
+    throw new Error(
+      "Cannot connect to "
+      + "Nova's backend."
+    );
+  }
+
+  if (!response.ok) {
+    const errorMessage =
+      await getErrorMessage(
+        response,
+        "Could not delete "
+          + "the document."
+      );
+
+    throw new Error(errorMessage);
+  }
 }
 
 
@@ -371,24 +438,18 @@ export async function deleteConversation(
     );
   } catch {
     throw new Error(
-      "Cannot connect to Nova's backend."
+      "Cannot connect to "
+      + "Nova's backend."
     );
   }
 
   if (!response.ok) {
-    let errorMessage =
-      "Could not delete the conversation.";
-
-    try {
-      const errorData =
-        await response.json();
-
-      errorMessage =
-        errorData.detail ||
-        errorMessage;
-    } catch {
-      // Successful DELETE has no body.
-    }
+    const errorMessage =
+      await getErrorMessage(
+        response,
+        "Could not delete "
+          + "the conversation."
+      );
 
     throw new Error(errorMessage);
   }
