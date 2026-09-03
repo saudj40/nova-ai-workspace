@@ -64,7 +64,7 @@ class HostedProvider(AIProvider):
             "model": AI_MODEL,
             "messages": messages,
             "temperature": 0.3,
-            "max_tokens": 500,
+            "max_tokens": 2048,
             "stream": False,
         }
 
@@ -73,7 +73,7 @@ class HostedProvider(AIProvider):
                 self._url(),
                 headers=self._headers(),
                 json=payload,
-                timeout=120,
+                timeout=180,
             )
 
             response.raise_for_status()
@@ -161,11 +161,12 @@ class HostedProvider(AIProvider):
             "model": AI_MODEL,
             "messages": messages,
             "temperature": 0.3,
-            "max_tokens": 500,
+            "max_tokens": 2048,
             "stream": True,
         }
 
         full_response = ""
+        finish_reason = None
 
         try:
             with requests.post(
@@ -173,13 +174,13 @@ class HostedProvider(AIProvider):
                 headers=self._headers(),
                 json=payload,
                 stream=True,
-                timeout=(10, 180),
+                timeout=(15, 300),
             ) as response:
+
                 response.raise_for_status()
 
-                for raw_line in (
-                    response.iter_lines()
-                ):
+                for raw_line in response.iter_lines():
+
                     if not raw_line:
                         continue
 
@@ -215,9 +216,22 @@ class HostedProvider(AIProvider):
                     if not choices:
                         continue
 
-                    delta = (
-                        choices[0]
-                        .get("delta", {})
+                    choice = choices[0]
+
+                    current_finish_reason = (
+                        choice.get(
+                            "finish_reason"
+                        )
+                    )
+
+                    if current_finish_reason:
+                        finish_reason = (
+                            current_finish_reason
+                        )
+
+                    delta = choice.get(
+                        "delta",
+                        {},
                     )
 
                     content = delta.get(
@@ -266,6 +280,19 @@ class HostedProvider(AIProvider):
 
         if not final_response:
             return
+
+        if finish_reason == "length":
+            warning = (
+                "\n\n*Response reached the "
+                "maximum output length.*"
+            )
+
+            full_response += warning
+            yield warning
+
+            final_response = (
+                full_response.strip()
+            )
 
         self.save_conversation(
             user_message=message,
