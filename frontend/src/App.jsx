@@ -1295,8 +1295,7 @@ function App() {
           }
 
           isUploading={
-            isUploading ||
-            isLoadingDocuments
+            isUploading
           }
 
           deletingDocumentId={

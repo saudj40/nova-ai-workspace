@@ -3,6 +3,41 @@ const API_URL =
   "http://127.0.0.1:8000";
 
 
+const SESSION_STORAGE_KEY =
+  "nova-session-id";
+
+
+function getNovaSessionId() {
+  let sessionId =
+    localStorage.getItem(
+      SESSION_STORAGE_KEY
+    );
+
+  if (!sessionId) {
+    sessionId =
+      crypto.randomUUID();
+
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      sessionId
+    );
+  }
+
+  return sessionId;
+}
+
+
+function getSessionHeaders(
+  extraHeaders = {}
+) {
+  return {
+    ...extraHeaders,
+    "X-Nova-Session":
+      getNovaSessionId(),
+  };
+}
+
+
 function createSmoothWriter(onChunk) {
   let buffer = "";
   let streamFinished = false;
@@ -153,6 +188,7 @@ async function getErrorMessage(
       errorData.detail ||
       fallbackMessage
     );
+
   } catch {
     return fallbackMessage;
   }
@@ -173,18 +209,23 @@ export async function streamMessage(
       `${API_URL}/chat/stream`,
       {
         method: "POST",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
+
+        headers:
+          getSessionHeaders({
+            "Content-Type":
+              "application/json",
+          }),
+
         body: JSON.stringify({
           message,
           conversation_id:
             conversationId,
         }),
+
         signal,
       }
     );
+
   } catch (error) {
     if (
       error.name === "AbortError"
@@ -193,10 +234,10 @@ export async function streamMessage(
     }
 
     throw new Error(
-      "Cannot connect to Nova's backend. "
-      + "Make sure FastAPI is running."
+      "Cannot connect to Nova's backend."
     );
   }
+
 
   if (!response.ok) {
     const errorMessage =
@@ -209,12 +250,14 @@ export async function streamMessage(
     throw new Error(errorMessage);
   }
 
+
   if (!response.body) {
     throw new Error(
       "Streaming is not supported "
-      + "by this browser."
+        + "by this browser."
     );
   }
+
 
   const reader =
     response.body.getReader();
@@ -225,6 +268,7 @@ export async function streamMessage(
   smoothWriter =
     createSmoothWriter(onChunk);
 
+
   function handleAbort() {
     smoothWriter.cancel();
 
@@ -233,6 +277,7 @@ export async function streamMessage(
     });
   }
 
+
   signal?.addEventListener(
     "abort",
     handleAbort,
@@ -240,6 +285,7 @@ export async function streamMessage(
       once: true,
     }
   );
+
 
   try {
     while (true) {
@@ -263,6 +309,7 @@ export async function streamMessage(
       );
     }
 
+
     smoothWriter.push(
       decoder.decode()
     );
@@ -271,6 +318,7 @@ export async function streamMessage(
 
     await smoothWriter
       .waitUntilFinished();
+
   } catch (error) {
     smoothWriter.cancel();
 
@@ -285,6 +333,7 @@ export async function streamMessage(
     }
 
     throw error;
+
   } finally {
     signal?.removeEventListener(
       "abort",
@@ -324,15 +373,19 @@ export async function uploadDocument(
       `${API_URL}/documents/upload`,
       {
         method: "POST",
+        headers:
+          getSessionHeaders(),
         body: formData,
       }
     );
+
   } catch {
     throw new Error(
       "Cannot connect to "
-      + "Nova's backend."
+        + "Nova's backend."
     );
   }
+
 
   if (!response.ok) {
     const errorMessage =
@@ -344,6 +397,7 @@ export async function uploadDocument(
 
     throw new Error(errorMessage);
   }
+
 
   return response.json();
 }
@@ -358,14 +412,20 @@ export async function getDocuments(
     response = await fetch(
       `${API_URL}/documents/conversation/${encodeURIComponent(
         conversationId
-      )}`
+      )}`,
+      {
+        headers:
+          getSessionHeaders(),
+      }
     );
+
   } catch {
     throw new Error(
       "Cannot connect to "
-      + "Nova's backend."
+        + "Nova's backend."
     );
   }
+
 
   if (!response.ok) {
     const errorMessage =
@@ -377,6 +437,7 @@ export async function getDocuments(
 
     throw new Error(errorMessage);
   }
+
 
   const data =
     await response.json();
@@ -400,14 +461,19 @@ export async function deleteDocument(
       )}`,
       {
         method: "DELETE",
+
+        headers:
+          getSessionHeaders(),
       }
     );
+
   } catch {
     throw new Error(
       "Cannot connect to "
-      + "Nova's backend."
+        + "Nova's backend."
     );
   }
+
 
   if (!response.ok) {
     const errorMessage =
@@ -434,14 +500,19 @@ export async function deleteConversation(
       )}`,
       {
         method: "DELETE",
+
+        headers:
+          getSessionHeaders(),
       }
     );
+
   } catch {
     throw new Error(
       "Cannot connect to "
-      + "Nova's backend."
+        + "Nova's backend."
     );
   }
+
 
   if (!response.ok) {
     const errorMessage =
