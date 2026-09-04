@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import Generator
 
 import requests
@@ -9,6 +10,11 @@ from app.core.config import (
     AI_MODEL,
 )
 from app.providers.base import AIProvider
+
+
+logger = logging.getLogger(__name__)
+
+MAX_OUTPUT_TOKENS = 4096
 
 
 class HostedProvider(AIProvider):
@@ -38,9 +44,8 @@ class HostedProvider(AIProvider):
             "Authorization": (
                 f"Bearer {AI_API_KEY}"
             ),
-            "Content-Type": (
-                "application/json"
-            ),
+            "Content-Type":
+                "application/json",
         }
 
     @staticmethod
@@ -49,6 +54,26 @@ class HostedProvider(AIProvider):
             f"{AI_BASE_URL.rstrip('/')}"
             "/chat/completions"
         )
+
+    @staticmethod
+    def _extract_provider_error(
+        data: dict,
+    ) -> str | None:
+        error = data.get("error")
+
+        if not error:
+            return None
+
+        if isinstance(error, str):
+            return error
+
+        if isinstance(error, dict):
+            return (
+                error.get("message")
+                or str(error)
+            )
+
+        return str(error)
 
     def generate(
         self,
@@ -64,7 +89,8 @@ class HostedProvider(AIProvider):
             "model": AI_MODEL,
             "messages": messages,
             "temperature": 0.3,
-            "max_tokens": 2048,
+            "max_tokens":
+                MAX_OUTPUT_TOKENS,
             "stream": False,
         }
 
@@ -73,7 +99,7 @@ class HostedProvider(AIProvider):
                 self._url(),
                 headers=self._headers(),
                 json=payload,
-                timeout=180,
+                timeout=(15, 300),
             )
 
             response.raise_for_status()
@@ -97,8 +123,8 @@ class HostedProvider(AIProvider):
                 detail = response.text
 
             raise RuntimeError(
-                f"AI provider rejected the request: "
-                f"{detail}"
+                "AI provider rejected "
+                f"the request: {detail}"
             ) from error
 
         except requests.exceptions.RequestException as error:
@@ -111,15 +137,37 @@ class HostedProvider(AIProvider):
 
         except requests.exceptions.JSONDecodeError as error:
             raise RuntimeError(
-                "AI provider returned invalid JSON."
+                "AI provider returned "
+                "invalid JSON."
             ) from error
 
+        provider_error = (
+            self._extract_provider_error(
+                data
+            )
+        )
+
+        if provider_error:
+            raise RuntimeError(
+                f"AI provider error: "
+                f"{provider_error}"
+            )
+
         try:
-            assistant_response = (
+            choice = (
                 data["choices"][0]
-                ["message"]
+            )
+
+            assistant_response = (
+                choice["message"]
                 ["content"]
                 .strip()
+            )
+
+            finish_reason = (
+                choice.get(
+                    "finish_reason"
+                )
             )
 
         except (
@@ -139,10 +187,26 @@ class HostedProvider(AIProvider):
                 "empty response."
             )
 
+        if finish_reason == "length":
+            assistant_response += (
+                "\n\n"
+                "*Response reached the "
+                "maximum output length.*"
+            )
+
+            logger.warning(
+                "Hosted generation hit "
+                "the output token limit."
+            )
+
         self.save_conversation(
             user_message=message,
-            assistant_message=assistant_response,
-            conversation_id=conversation_id,
+            assistant_message=(
+                assistant_response
+            ),
+            conversation_id=(
+                conversation_id
+            ),
         )
 
         return assistant_response
@@ -161,12 +225,14 @@ class HostedProvider(AIProvider):
             "model": AI_MODEL,
             "messages": messages,
             "temperature": 0.3,
-            "max_tokens": 2048,
+            "max_tokens":
+                MAX_OUTPUT_TOKENS,
             "stream": True,
         }
 
         full_response = ""
         finish_reason = None
+        received_done = False
 
         try:
             with requests.post(
@@ -179,14 +245,14 @@ class HostedProvider(AIProvider):
 
                 response.raise_for_status()
 
-                for raw_line in response.iter_lines():
-
-                    if not raw_line:
+                for line in response.iter_lines(
+                    chunk_size=64,
+                    decode_unicode=True,
+                ):
+                    if not line:
                         continue
 
-                    line = raw_line.decode(
-                        "utf-8"
-                    ).strip()
+                    line = line.strip()
 
                     if not line.startswith(
                         "data:"
@@ -198,6 +264,7 @@ class HostedProvider(AIProvider):
                     )
 
                     if data_text == "[DONE]":
+                        received_done = True
                         break
 
                     try:
@@ -206,7 +273,24 @@ class HostedProvider(AIProvider):
                         )
 
                     except json.JSONDecodeError:
+                        logger.warning(
+                            "Skipped invalid "
+                            "OpenRouter SSE data."
+                        )
+
                         continue
+
+                    provider_error = (
+                        self._extract_provider_error(
+                            data
+                        )
+                    )
+
+                    if provider_error:
+                        raise RuntimeError(
+                            "AI provider error: "
+                            f"{provider_error}"
+                        )
 
                     choices = data.get(
                         "choices",
@@ -246,16 +330,49 @@ class HostedProvider(AIProvider):
                         yield content
 
         except requests.exceptions.Timeout as error:
-            raise RuntimeError(
-                "AI provider streaming "
-                "request timed out."
-            ) from error
+            logger.exception(
+                "Hosted stream timed out."
+            )
+
+            if full_response:
+                warning = (
+                    "\n\n"
+                    "*The connection to the AI "
+                    "provider was interrupted. "
+                    "Please ask Nova to continue.*"
+                )
+
+                full_response += warning
+                yield warning
+
+            else:
+                raise RuntimeError(
+                    "AI provider streaming "
+                    "request timed out."
+                ) from error
 
         except requests.exceptions.ConnectionError as error:
-            raise RuntimeError(
-                "Cannot connect to the "
-                "AI provider."
-            ) from error
+            logger.exception(
+                "Hosted provider connection "
+                "was interrupted."
+            )
+
+            if full_response:
+                warning = (
+                    "\n\n"
+                    "*The connection to the AI "
+                    "provider was interrupted. "
+                    "Please ask Nova to continue.*"
+                )
+
+                full_response += warning
+                yield warning
+
+            else:
+                raise RuntimeError(
+                    "Cannot connect to the "
+                    "AI provider."
+                ) from error
 
         except requests.exceptions.HTTPError as error:
             try:
@@ -263,16 +380,57 @@ class HostedProvider(AIProvider):
             except ValueError:
                 detail = response.text
 
+            logger.exception(
+                "Hosted provider HTTP error."
+            )
+
             raise RuntimeError(
-                f"AI provider rejected the request: "
-                f"{detail}"
+                "AI provider rejected "
+                f"the request: {detail}"
             ) from error
 
         except requests.exceptions.RequestException as error:
-            raise RuntimeError(
-                "AI provider streaming "
-                "request failed."
-            ) from error
+            logger.exception(
+                "Hosted provider request "
+                "failed."
+            )
+
+            if full_response:
+                warning = (
+                    "\n\n"
+                    "*The AI connection ended "
+                    "unexpectedly. Please ask "
+                    "Nova to continue.*"
+                )
+
+                full_response += warning
+                yield warning
+
+            else:
+                raise RuntimeError(
+                    "AI provider streaming "
+                    "request failed."
+                ) from error
+
+        except RuntimeError as error:
+            logger.exception(
+                "Hosted provider returned "
+                "a streaming error."
+            )
+
+            if full_response:
+                warning = (
+                    "\n\n"
+                    "*The AI provider ended this "
+                    "response unexpectedly. "
+                    "Please ask Nova to continue.*"
+                )
+
+                full_response += warning
+                yield warning
+
+            else:
+                raise error
 
         final_response = (
             full_response.strip()
@@ -283,7 +441,8 @@ class HostedProvider(AIProvider):
 
         if finish_reason == "length":
             warning = (
-                "\n\n*Response reached the "
+                "\n\n"
+                "*Response reached the "
                 "maximum output length.*"
             )
 
@@ -294,8 +453,50 @@ class HostedProvider(AIProvider):
                 full_response.strip()
             )
 
+            logger.warning(
+                "Hosted streaming response "
+                "hit the output token limit."
+            )
+
+        elif (
+            not received_done
+            and finish_reason is None
+        ):
+            warning = (
+                "\n\n"
+                "*The AI stream ended "
+                "unexpectedly. Please ask "
+                "Nova to continue.*"
+            )
+
+            full_response += warning
+            yield warning
+
+            final_response = (
+                full_response.strip()
+            )
+
+            logger.warning(
+                "Hosted stream ended without "
+                "[DONE] or a finish reason."
+            )
+
+        logger.info(
+            "Hosted stream completed. "
+            "finish_reason=%s "
+            "received_done=%s "
+            "characters=%s",
+            finish_reason,
+            received_done,
+            len(final_response),
+        )
+
         self.save_conversation(
             user_message=message,
-            assistant_message=final_response,
-            conversation_id=conversation_id,
+            assistant_message=(
+                final_response
+            ),
+            conversation_id=(
+                conversation_id
+            ),
         )
