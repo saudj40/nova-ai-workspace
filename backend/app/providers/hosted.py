@@ -245,14 +245,23 @@ class HostedProvider(AIProvider):
 
                 response.raise_for_status()
 
-                for line in response.iter_lines(
+                for raw_line in response.iter_lines(
                     chunk_size=64,
-                    decode_unicode=True,
+                    decode_unicode=False,
                 ):
-                    if not line:
+                    if not raw_line:
                         continue
 
-                    line = line.strip()
+                    try:
+                        line = raw_line.decode(
+                            "utf-8"
+                        ).strip()
+                    except UnicodeDecodeError:
+                        logger.warning(
+                            "Skipped non-UTF-8 "
+                            "OpenRouter SSE data."
+                        )
+                        continue
 
                     if not line.startswith(
                         "data:"
