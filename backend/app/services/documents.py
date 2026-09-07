@@ -1,17 +1,23 @@
-import json
+import os
 import re
-import shutil
 from io import BytesIO
-from pathlib import Path
-from threading import Lock
 from uuid import uuid4
 
-import numpy as np
+import requests
+from dotenv import load_dotenv
 from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer
+from supabase import Client, create_client
+
+
+load_dotenv()
 
 
 class DocumentService:
+    """
+    Handles Nova PDF processing, hosted embeddings,
+    Supabase persistence, and RAG retrieval.
+    """
+
     MAX_FILE_SIZE = 15 * 1024 * 1024
 
     ALLOWED_CONTENT_TYPES = {
@@ -19,46 +25,59 @@ class DocumentService:
         "application/x-pdf",
     }
 
-    EMBEDDING_MODEL_NAME = (
-        "sentence-transformers/all-MiniLM-L6-v2"
-    )
-
     CHUNK_SIZE = 900
     CHUNK_OVERLAP = 150
     TOP_K_RESULTS = 5
 
+    EMBEDDING_DIMENSION = 1536
+    EMBEDDING_BATCH_SIZE = 64
+    DATABASE_INSERT_BATCH_SIZE = 50
+
     def __init__(self) -> None:
-        backend_directory = (
-            Path(__file__).resolve().parents[2]
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv(
+            "SUPABASE_SERVICE_ROLE_KEY"
         )
 
-        self.documents_directory = (
-            backend_directory
-            / "data"
-            / "documents"
+        ai_base_url = os.getenv(
+            "AI_BASE_URL",
+            "https://openrouter.ai/api/v1",
         )
 
-        self.documents_directory.mkdir(
-            parents=True,
-            exist_ok=True,
+        ai_api_key = os.getenv("AI_API_KEY")
+
+        embedding_model = os.getenv(
+            "EMBEDDING_MODEL",
+            "openai/text-embedding-3-small",
         )
 
-        self._embedding_model = None
-        self._model_lock = Lock()
+        if not supabase_url:
+            raise RuntimeError(
+                "SUPABASE_URL is not configured."
+            )
 
-    def _get_embedding_model(
-        self,
-    ) -> SentenceTransformer:
-        if self._embedding_model is None:
-            with self._model_lock:
-                if self._embedding_model is None:
-                    self._embedding_model = (
-                        SentenceTransformer(
-                            self.EMBEDDING_MODEL_NAME
-                        )
-                    )
+        if not supabase_key:
+            raise RuntimeError(
+                "SUPABASE_SERVICE_ROLE_KEY "
+                "is not configured."
+            )
 
-        return self._embedding_model
+        if not ai_api_key:
+            raise RuntimeError(
+                "AI_API_KEY is not configured."
+            )
+
+        self.supabase: Client = create_client(
+            supabase_url,
+            supabase_key,
+        )
+
+        self.embedding_url = (
+            f"{ai_base_url.rstrip('/')}/embeddings"
+        )
+
+        self.embedding_api_key = ai_api_key
+        self.embedding_model = embedding_model
 
     @staticmethod
     def _safe_identifier(
@@ -101,6 +120,140 @@ class DocumentService:
             if line
         ).strip()
 
+    def _create_embeddings(
+        self,
+        texts: list[str],
+    ) -> list[list[float]]:
+        """
+        Creates embeddings using the hosted
+        OpenRouter embeddings API.
+        """
+
+        if not texts:
+            return []
+
+        all_embeddings: list[list[float]] = []
+
+        for start in range(
+            0,
+            len(texts),
+            self.EMBEDDING_BATCH_SIZE,
+        ):
+            batch = texts[
+                start:
+                start + self.EMBEDDING_BATCH_SIZE
+            ]
+
+            try:
+                response = requests.post(
+                    self.embedding_url,
+                    headers={
+                        "Authorization": (
+                            "Bearer "
+                            f"{self.embedding_api_key}"
+                        ),
+                        "Content-Type": (
+                            "application/json"
+                        ),
+                    },
+                    json={
+                        "model": self.embedding_model,
+                        "input": batch,
+                    },
+                    timeout=(15, 120),
+                )
+
+            except requests.RequestException as error:
+                raise RuntimeError(
+                    "Could not connect to the "
+                    "embedding provider."
+                ) from error
+
+            if not response.ok:
+                raise RuntimeError(
+                    "Embedding request failed: "
+                    f"{response.status_code} "
+                    f"{response.text[:500]}"
+                )
+
+            try:
+                payload = response.json()
+            except ValueError as error:
+                raise RuntimeError(
+                    "Embedding provider returned "
+                    "an invalid response."
+                ) from error
+
+            data = payload.get("data")
+
+            if not isinstance(data, list):
+                raise RuntimeError(
+                    "Embedding provider returned "
+                    "invalid embedding data."
+                )
+
+            # Preserve provider ordering explicitly
+            # when index values are provided.
+            if all(
+                isinstance(item, dict)
+                and isinstance(
+                    item.get("index"),
+                    int,
+                )
+                for item in data
+            ):
+                data = sorted(
+                    data,
+                    key=lambda item: item["index"],
+                )
+
+            batch_embeddings = []
+
+            for item in data:
+                if not isinstance(item, dict):
+                    raise RuntimeError(
+                        "Embedding provider returned "
+                        "invalid embedding data."
+                    )
+
+                embedding = item.get("embedding")
+
+                if not isinstance(
+                    embedding,
+                    list,
+                ):
+                    raise RuntimeError(
+                        "Embedding provider returned "
+                        "an invalid vector."
+                    )
+
+                if (
+                    len(embedding)
+                    != self.EMBEDDING_DIMENSION
+                ):
+                    raise RuntimeError(
+                        "Unexpected embedding "
+                        "dimension. Expected "
+                        f"{self.EMBEDDING_DIMENSION}, "
+                        f"received {len(embedding)}."
+                    )
+
+                batch_embeddings.append(
+                    embedding
+                )
+
+            if len(batch_embeddings) != len(batch):
+                raise RuntimeError(
+                    "Embedding count does not "
+                    "match input count."
+                )
+
+            all_embeddings.extend(
+                batch_embeddings
+            )
+
+        return all_embeddings
+
     def extract_pdf(
         self,
         file_content: bytes,
@@ -109,6 +262,7 @@ class DocumentService:
             reader = PdfReader(
                 BytesIO(file_content)
             )
+
         except Exception as error:
             raise ValueError(
                 "The PDF could not be opened."
@@ -123,6 +277,7 @@ class DocumentService:
                         "Password-protected PDFs "
                         "are not supported yet."
                     )
+
             except Exception as error:
                 raise ValueError(
                     "Password-protected PDFs "
@@ -140,6 +295,7 @@ class DocumentService:
                 page_text = (
                     page.extract_text() or ""
                 )
+
             except Exception:
                 page_text = ""
 
@@ -166,7 +322,8 @@ class DocumentService:
         if not full_text:
             raise ValueError(
                 "No readable text was found. "
-                "The PDF may be scanned or image-based."
+                "The PDF may be scanned or "
+                "image-based."
             )
 
         return pages, full_text
@@ -259,10 +416,8 @@ class DocumentService:
 
             page_text = page["text"]
 
-            page_chunks = (
-                self._split_text(
-                    page_text
-                )
+            page_chunks = self._split_text(
+                page_text
             )
 
             for (
@@ -281,9 +436,10 @@ class DocumentService:
                         "page_number": (
                             page_number
                         ),
-                        "text": (
-                            chunk_text
+                        "chunk_index": (
+                            chunk_index
                         ),
+                        "text": chunk_text,
                     }
                 )
 
@@ -296,31 +452,28 @@ class DocumentService:
         if not chunks:
             return chunks
 
-        model = (
-            self._get_embedding_model()
-        )
-
         chunk_texts = [
             chunk["text"]
             for chunk in chunks
         ]
 
-        embeddings = model.encode(
-            chunk_texts,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-            show_progress_bar=False,
+        embeddings = (
+            self._create_embeddings(
+                chunk_texts
+            )
         )
+
+        if len(embeddings) != len(chunks):
+            raise RuntimeError(
+                "Embedding count does not "
+                "match chunk count."
+            )
 
         for chunk, embedding in zip(
             chunks,
             embeddings,
         ):
-            chunk["embedding"] = (
-                embedding.astype(
-                    np.float32
-                ).tolist()
-            )
+            chunk["embedding"] = embedding
 
         return chunks
 
@@ -378,38 +531,30 @@ class DocumentService:
             pages
         )
 
+        if not chunks:
+            raise ValueError(
+                "No usable text chunks could "
+                "be created from this PDF."
+            )
+
         chunks = self._embed_chunks(
             chunks
         )
-
-        if not chunks:
-            raise ValueError(
-                "No usable text chunks "
-                "could be created from "
-                "this PDF."
-            )
 
         document_id = str(
             uuid4()
         )
 
-        conversation_directory = (
-            self.documents_directory
-            / safe_conversation_id
-        )
-
-        conversation_directory.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        document_data = {
+        document_record = {
             "id": document_id,
             "conversation_id": (
                 safe_conversation_id
             ),
             "filename": filename,
-            "content_type": content_type,
+            "content_type": (
+                content_type
+                or "application/pdf"
+            ),
             "file_size": len(
                 file_content
             ),
@@ -420,24 +565,89 @@ class DocumentService:
             "chunk_count": len(
                 chunks
             ),
-            "pages": pages,
-            "full_text": full_text,
-            "chunks": chunks,
         }
 
-        document_path = (
-            conversation_directory
-            / f"{document_id}.json"
-        )
+        try:
+            (
+                self.supabase
+                .table("documents")
+                .insert(document_record)
+                .execute()
+            )
 
-        document_path.write_text(
-            json.dumps(
-                document_data,
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+            chunk_records = []
+
+            for chunk in chunks:
+                chunk_records.append(
+                    {
+                        "document_id": (
+                            document_id
+                        ),
+                        "conversation_id": (
+                            safe_conversation_id
+                        ),
+                        "filename": filename,
+                        "page_number": (
+                            chunk[
+                                "page_number"
+                            ]
+                        ),
+                        "chunk_index": (
+                            chunk[
+                                "chunk_index"
+                            ]
+                        ),
+                        "content": (
+                            chunk["text"]
+                        ),
+                        "embedding": (
+                            chunk["embedding"]
+                        ),
+                    }
+                )
+
+            for start in range(
+                0,
+                len(chunk_records),
+                self.DATABASE_INSERT_BATCH_SIZE,
+            ):
+                batch = chunk_records[
+                    start:
+                    start
+                    + self.DATABASE_INSERT_BATCH_SIZE
+                ]
+
+                (
+                    self.supabase
+                    .table("document_chunks")
+                    .insert(batch)
+                    .execute()
+                )
+
+        except Exception as error:
+            # If chunk insertion fails after the
+            # document was created, remove the
+            # document. The foreign-key cascade
+            # removes any chunks already inserted.
+            try:
+                (
+                    self.supabase
+                    .table("documents")
+                    .delete()
+                    .eq(
+                        "id",
+                        document_id,
+                    )
+                    .execute()
+                )
+
+            except Exception:
+                pass
+
+            raise RuntimeError(
+                "Could not save the document "
+                "to Nova's knowledge store."
+            ) from error
 
         return {
             "id": document_id,
@@ -455,79 +665,6 @@ class DocumentService:
             ),
         }
 
-    def _load_document(
-        self,
-        document_path: Path,
-    ) -> dict | None:
-        try:
-            document_data = json.loads(
-                document_path.read_text(
-                    encoding="utf-8"
-                )
-            )
-        except (
-            OSError,
-            json.JSONDecodeError,
-        ):
-            return None
-
-        chunks = document_data.get(
-            "chunks"
-        )
-
-        needs_indexing = (
-            not isinstance(
-                chunks,
-                list,
-            )
-            or not chunks
-            or any(
-                "embedding"
-                not in chunk
-                for chunk in chunks
-            )
-        )
-
-        if needs_indexing:
-            pages = document_data.get(
-                "pages",
-                [],
-            )
-
-            chunks = (
-                self._create_chunks(
-                    pages
-                )
-            )
-
-            chunks = (
-                self._embed_chunks(
-                    chunks
-                )
-            )
-
-            document_data[
-                "chunks"
-            ] = chunks
-
-            document_data[
-                "chunk_count"
-            ] = len(chunks)
-
-            try:
-                document_path.write_text(
-                    json.dumps(
-                        document_data,
-                        ensure_ascii=False,
-                        indent=2,
-                    ),
-                    encoding="utf-8",
-                )
-            except OSError:
-                pass
-
-        return document_data
-
     def list_documents(
         self,
         conversation_id: str,
@@ -538,59 +675,54 @@ class DocumentService:
             )
         )
 
-        conversation_directory = (
-            self.documents_directory
-            / safe_conversation_id
+        response = (
+            self.supabase
+            .table("documents")
+            .select(
+                "id,"
+                "filename,"
+                "page_count,"
+                "character_count,"
+                "chunk_count,"
+                "created_at"
+            )
+            .eq(
+                "conversation_id",
+                safe_conversation_id,
+            )
+            .order(
+                "created_at",
+                desc=True,
+            )
+            .execute()
         )
 
-        if (
-            not conversation_directory.exists()
-        ):
-            return []
+        rows = response.data or []
 
-        documents = []
-
-        for document_path in sorted(
-            conversation_directory.glob(
-                "*.json"
-            ),
-            key=lambda path: (
-                path.stat().st_mtime
-            ),
-            reverse=True,
-        ):
-            data = self._load_document(
-                document_path
-            )
-
-            if not data:
-                continue
-
-            documents.append(
-                {
-                    "id": data["id"],
-                    "filename": (
-                        data["filename"]
-                    ),
-                    "page_count": (
-                        data["page_count"]
-                    ),
-                    "character_count": (
-                        data.get(
-                            "character_count",
-                            0,
-                        )
-                    ),
-                    "chunk_count": (
-                        data.get(
-                            "chunk_count",
-                            0,
-                        )
-                    ),
-                }
-            )
-
-        return documents
+        return [
+            {
+                "id": row["id"],
+                "filename": (
+                    row["filename"]
+                ),
+                "page_count": (
+                    row["page_count"]
+                ),
+                "character_count": (
+                    row.get(
+                        "character_count",
+                        0,
+                    )
+                ),
+                "chunk_count": (
+                    row.get(
+                        "chunk_count",
+                        0,
+                    )
+                ),
+            }
+            for row in rows
+        ]
 
     def delete_document(
         self,
@@ -609,41 +741,46 @@ class DocumentService:
             )
         )
 
-        conversation_directory = (
-            self.documents_directory
-            / safe_conversation_id
+        existing = (
+            self.supabase
+            .table("documents")
+            .select("id")
+            .eq(
+                "id",
+                safe_document_id,
+            )
+            .eq(
+                "conversation_id",
+                safe_conversation_id,
+            )
+            .limit(1)
+            .execute()
         )
 
-        document_path = (
-            conversation_directory
-            / f"{safe_document_id}.json"
-        )
-
-        if not document_path.exists():
+        if not existing.data:
             return False
 
         try:
-            document_path.unlink()
-        except OSError as error:
+            (
+                self.supabase
+                .table("documents")
+                .delete()
+                .eq(
+                    "id",
+                    safe_document_id,
+                )
+                .eq(
+                    "conversation_id",
+                    safe_conversation_id,
+                )
+                .execute()
+            )
+
+        except Exception as error:
             raise RuntimeError(
                 "Could not delete "
                 "the document."
             ) from error
-
-        try:
-            has_documents = any(
-                conversation_directory.glob(
-                    "*.json"
-                )
-            )
-
-            if (
-                conversation_directory.exists()
-                and not has_documents
-            ):
-                conversation_directory.rmdir()
-        except OSError:
-            pass
 
         return True
 
@@ -657,18 +794,23 @@ class DocumentService:
             )
         )
 
-        conversation_directory = (
-            self.documents_directory
-            / safe_conversation_id
-        )
-
-        if (
-            conversation_directory.exists()
-        ):
-            shutil.rmtree(
-                conversation_directory,
-                ignore_errors=True,
+        try:
+            (
+                self.supabase
+                .table("documents")
+                .delete()
+                .eq(
+                    "conversation_id",
+                    safe_conversation_id,
+                )
+                .execute()
             )
+
+        except Exception as error:
+            raise RuntimeError(
+                "Could not delete conversation "
+                "documents."
+            ) from error
 
     def retrieve_context(
         self,
@@ -682,145 +824,22 @@ class DocumentService:
             )
         )
 
-        conversation_directory = (
-            self.documents_directory
-            / safe_conversation_id
-        )
+        cleaned_query = query.strip()
 
-        if (
-            not conversation_directory.exists()
-        ):
+        if not cleaned_query:
             return []
 
-        all_chunks = []
-
-        for document_path in (
-            conversation_directory.glob(
-                "*.json"
+        query_embeddings = (
+            self._create_embeddings(
+                [cleaned_query]
             )
-        ):
-            document_data = (
-                self._load_document(
-                    document_path
-                )
-            )
+        )
 
-            if not document_data:
-                continue
-
-            filename = (
-                document_data.get(
-                    "filename",
-                    "Unknown document",
-                )
-            )
-
-            document_id = (
-                document_data.get(
-                    "id",
-                    document_path.stem,
-                )
-            )
-
-            for chunk in (
-                document_data.get(
-                    "chunks",
-                    [],
-                )
-            ):
-                embedding = chunk.get(
-                    "embedding"
-                )
-
-                if not embedding:
-                    continue
-
-                all_chunks.append(
-                    {
-                        "document_id": (
-                            document_id
-                        ),
-                        "filename": (
-                            filename
-                        ),
-                        "page_number": (
-                            chunk[
-                                "page_number"
-                            ]
-                        ),
-                        "text": (
-                            chunk["text"]
-                        ),
-                        "embedding": (
-                            embedding
-                        ),
-                    }
-                )
-
-        if not all_chunks:
+        if not query_embeddings:
             return []
 
-        model = (
-            self._get_embedding_model()
-        )
-
-        query_embedding = model.encode(
-            query,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        ).astype(
-            np.float32
-        )
-
-        scored_chunks = []
-
-        for chunk in all_chunks:
-            chunk_embedding = (
-                np.asarray(
-                    chunk[
-                        "embedding"
-                    ],
-                    dtype=np.float32,
-                )
-            )
-
-            score = float(
-                np.dot(
-                    query_embedding,
-                    chunk_embedding,
-                )
-            )
-
-            scored_chunks.append(
-                {
-                    "document_id": (
-                        chunk[
-                            "document_id"
-                        ]
-                    ),
-                    "filename": (
-                        chunk[
-                            "filename"
-                        ]
-                    ),
-                    "page_number": (
-                        chunk[
-                            "page_number"
-                        ]
-                    ),
-                    "text": (
-                        chunk["text"]
-                    ),
-                    "score": score,
-                }
-            )
-
-        scored_chunks.sort(
-            key=lambda item: (
-                item["score"]
-            ),
-            reverse=True,
+        query_embedding = (
+            query_embeddings[0]
         )
 
         result_limit = (
@@ -828,22 +847,70 @@ class DocumentService:
             or self.TOP_K_RESULTS
         )
 
-        return scored_chunks[
-            :result_limit
-        ]
+        try:
+            response = (
+                self.supabase
+                .rpc(
+                    "match_document_chunks",
+                    {
+                        "query_embedding": (
+                            query_embedding
+                        ),
+                        "match_conversation_id": (
+                            safe_conversation_id
+                        ),
+                        "match_count": (
+                            result_limit
+                        ),
+                    },
+                )
+                .execute()
+            )
+
+        except Exception as error:
+            raise RuntimeError(
+                "Could not retrieve document "
+                "context."
+            ) from error
+
+        rows = response.data or []
+
+        results = []
+
+        for row in rows:
+            results.append(
+                {
+                    "document_id": (
+                        row["document_id"]
+                    ),
+                    "filename": (
+                        row["filename"]
+                    ),
+                    "page_number": (
+                        row["page_number"]
+                    ),
+                    "text": (
+                        row["content"]
+                    ),
+                    "score": float(
+                        row.get(
+                            "similarity",
+                            0.0,
+                        )
+                    ),
+                }
+            )
+
+        return results
 
     def build_rag_context(
         self,
         query: str,
         conversation_id: str,
     ) -> str | None:
-        results = (
-            self.retrieve_context(
-                query=query,
-                conversation_id=(
-                    conversation_id
-                ),
-            )
+        results = self.retrieve_context(
+            query=query,
+            conversation_id=conversation_id,
         )
 
         if not results:
@@ -851,10 +918,7 @@ class DocumentService:
 
         context_sections = []
 
-        for (
-            index,
-            result,
-        ) in enumerate(
+        for index, result in enumerate(
             results,
             start=1,
         ):
