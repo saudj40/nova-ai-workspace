@@ -28,6 +28,9 @@ from app.services.nova import (
     generate_response,
     stream_response,
 )
+from app.services.rate_limit import (
+    rate_limiter,
+)
 
 
 router = APIRouter()
@@ -50,6 +53,48 @@ def get_conversation_scope(
         ) from error
 
 
+def enforce_chat_rate_limit(
+    session_id: str,
+) -> None:
+    try:
+        result = (
+            rate_limiter.check_chat_limit(
+                session_id=session_id
+            )
+        )
+
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Nova's request protection "
+                "service is temporarily "
+                "unavailable."
+            ),
+        ) from error
+
+    if result.allowed:
+        return
+
+    retry_after = max(
+        1,
+        result.retry_after,
+    )
+
+    raise HTTPException(
+        status_code=429,
+        detail=(
+            "Too many requests. "
+            "Please wait a moment "
+            "before trying again."
+        ),
+        headers={
+            "Retry-After":
+                str(retry_after),
+        },
+    )
+
+
 @router.post(
     "/chat",
     response_model=ChatResponse,
@@ -65,6 +110,10 @@ def chat(
         ),
     ],
 ):
+    enforce_chat_rate_limit(
+        session_id=session_id
+    )
+
     scoped_conversation_id = (
         get_conversation_scope(
             session_id=session_id,
@@ -107,6 +156,10 @@ def chat_stream(
         ),
     ],
 ):
+    enforce_chat_rate_limit(
+        session_id=session_id
+    )
+
     scoped_conversation_id = (
         get_conversation_scope(
             session_id=session_id,

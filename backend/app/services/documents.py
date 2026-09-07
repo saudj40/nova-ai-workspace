@@ -829,6 +829,28 @@ class DocumentService:
         if not cleaned_query:
             return []
 
+        try:
+            document_check = (
+                self.supabase
+                .table("documents")
+                .select("id")
+                .eq(
+                    "conversation_id",
+                    safe_conversation_id,
+                )
+                .limit(1)
+                .execute()
+            )
+
+        except Exception as error:
+            raise RuntimeError(
+                "Could not check conversation "
+                "documents."
+            ) from error
+
+        if not document_check.data:
+            return []
+
         query_embeddings = (
             self._create_embeddings(
                 [cleaned_query]
