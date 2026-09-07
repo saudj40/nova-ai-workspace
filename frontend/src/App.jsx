@@ -177,7 +177,15 @@ function App() {
   const [
     sidebarOpen,
     setSidebarOpen,
-  ] = useState(true);
+  ] = useState(() => {
+    if (typeof window === "undefined") {
+      return true;
+    }
+
+    return !window.matchMedia(
+      "(max-width: 760px)"
+    ).matches;
+  });
 
 
   const activeChat =
@@ -346,6 +354,72 @@ function App() {
     };
 
   }, []);
+
+
+  useEffect(() => {
+    const mediaQuery =
+      window.matchMedia(
+        "(max-width: 760px)"
+      );
+
+    function handleViewportChange(
+      event
+    ) {
+      setSidebarOpen(
+        !event.matches
+      );
+    }
+
+    mediaQuery.addEventListener(
+      "change",
+      handleViewportChange
+    );
+
+    return () => {
+      mediaQuery.removeEventListener(
+        "change",
+        handleViewportChange
+      );
+    };
+  }, []);
+
+
+  useEffect(() => {
+    function handleEscape(event) {
+      if (
+        event.key === "Escape" &&
+        sidebarOpen &&
+        window.matchMedia(
+          "(max-width: 760px)"
+        ).matches
+      ) {
+        setSidebarOpen(false);
+      }
+    }
+
+    window.addEventListener(
+      "keydown",
+      handleEscape
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleEscape
+      );
+    };
+  }, [sidebarOpen]);
+
+
+  function closeSidebarOnMobile() {
+    if (
+      window.matchMedia(
+        "(max-width: 760px)"
+      ).matches
+    ) {
+      setSidebarOpen(false);
+    }
+  }
 
 
   function updateChatMessages(
@@ -843,6 +917,8 @@ function App() {
     setIsHome(true);
 
     setUploadedDocuments([]);
+
+    closeSidebarOnMobile();
   }
 
 
@@ -868,6 +944,8 @@ function App() {
 
       setIsHome(false);
 
+      closeSidebarOnMobile();
+
       return;
     }
 
@@ -889,6 +967,8 @@ function App() {
     );
 
     setIsHome(false);
+
+    closeSidebarOnMobile();
   }
 
 
@@ -904,6 +984,8 @@ function App() {
     setActiveChatId(chatId);
 
     setIsHome(false);
+
+    closeSidebarOnMobile();
   }
 
 
@@ -1130,12 +1212,27 @@ function App() {
             handleDeleteChat
           }
 
+          onClose={() =>
+            setSidebarOpen(false)
+          }
+
           isLoading={
             interfaceLocked
           }
         />
 
       </div>
+
+
+      {sidebarOpen && (
+        <button
+          className="sidebar-backdrop"
+          onClick={() =>
+            setSidebarOpen(false)
+          }
+          aria-label="Close sidebar"
+        />
+      )}
 
 
       <main className="main-panel">

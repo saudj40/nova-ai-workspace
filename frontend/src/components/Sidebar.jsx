@@ -4,6 +4,7 @@ import {
   Pencil,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
 
 
@@ -15,10 +16,20 @@ function Sidebar({
   onSelectChat,
   onRenameChat,
   onDeleteChat,
+  onClose,
   isLoading,
 }) {
   return (
     <aside className="sidebar">
+      <button
+        className="mobile-sidebar-close"
+        onClick={onClose}
+        aria-label="Close sidebar"
+        title="Close sidebar"
+      >
+        <X size={19} />
+      </button>
+
       <button
         className="brand brand-button"
         onClick={onHome}
