@@ -7,6 +7,25 @@ const SESSION_STORAGE_KEY =
   "nova-session-id";
 
 
+function createSessionId() {
+  if (
+    globalThis.crypto?.randomUUID
+  ) {
+    return crypto.randomUUID();
+  }
+
+  return [
+    Date.now().toString(36),
+    Math.random()
+      .toString(36)
+      .slice(2),
+    Math.random()
+      .toString(36)
+      .slice(2),
+  ].join("-");
+}
+
+
 function getNovaSessionId() {
   let sessionId =
     localStorage.getItem(
@@ -15,7 +34,7 @@ function getNovaSessionId() {
 
   if (!sessionId) {
     sessionId =
-      crypto.randomUUID();
+      createSessionId();
 
     localStorage.setItem(
       SESSION_STORAGE_KEY,
@@ -176,21 +195,86 @@ function createSmoothWriter(onChunk) {
 }
 
 
+function getFriendlyErrorMessage(
+  response,
+  fallbackMessage
+) {
+  if (response.status === 429) {
+    const retryAfter =
+      response.headers.get(
+        "Retry-After"
+      );
+
+    if (retryAfter) {
+      return (
+        "Nova is receiving too many "
+        + "requests. Please try again in "
+        + `${retryAfter} seconds.`
+      );
+    }
+
+    return (
+      "Nova is receiving too many "
+      + "requests. Please try again shortly."
+    );
+  }
+
+  if (response.status === 503) {
+    return (
+      "Nova is temporarily busy. "
+      + "Please try again in a moment."
+    );
+  }
+
+  if (response.status === 413) {
+    return (
+      "That file is too large for Nova."
+    );
+  }
+
+  if (response.status >= 500) {
+    return (
+      "Nova encountered a temporary "
+      + "server problem. Please try again."
+    );
+  }
+
+  return fallbackMessage;
+}
+
+
 async function getErrorMessage(
   response,
   fallbackMessage
 ) {
+  const friendlyMessage =
+    getFriendlyErrorMessage(
+      response,
+      fallbackMessage
+    );
+
+  if (
+    response.status === 429 ||
+    response.status >= 500
+  ) {
+    return friendlyMessage;
+  }
+
   try {
     const errorData =
       await response.json();
 
-    return (
-      errorData.detail ||
-      fallbackMessage
-    );
+    if (
+      typeof errorData.detail === "string" &&
+      errorData.detail.trim()
+    ) {
+      return errorData.detail;
+    }
+
+    return friendlyMessage;
 
   } catch {
-    return fallbackMessage;
+    return friendlyMessage;
   }
 }
 
@@ -234,7 +318,9 @@ export async function streamMessage(
     }
 
     throw new Error(
-      "Cannot connect to Nova's backend."
+      "Nova cannot reach its server "
+        + "right now. Check your "
+        + "connection and try again."
     );
   }
 
@@ -243,8 +329,8 @@ export async function streamMessage(
     const errorMessage =
       await getErrorMessage(
         response,
-        "Nova encountered "
-          + "an unexpected error."
+        "Nova could not start "
+          + "this response."
       );
 
     throw new Error(errorMessage);
@@ -263,7 +349,7 @@ export async function streamMessage(
     response.body.getReader();
 
   const decoder =
-    new TextDecoder();
+    new TextDecoder("utf-8");
 
   smoothWriter =
     createSmoothWriter(onChunk);
@@ -332,7 +418,10 @@ export async function streamMessage(
       );
     }
 
-    throw error;
+    throw new Error(
+      "Nova's response was interrupted. "
+        + "Please try again."
+    );
 
   } finally {
     signal?.removeEventListener(
@@ -373,16 +462,19 @@ export async function uploadDocument(
       `${API_URL}/documents/upload`,
       {
         method: "POST",
+
         headers:
           getSessionHeaders(),
+
         body: formData,
       }
     );
 
   } catch {
     throw new Error(
-      "Cannot connect to "
-        + "Nova's backend."
+      "Nova cannot reach its server "
+        + "right now. Check your "
+        + "connection and try again."
     );
   }
 
@@ -391,8 +483,7 @@ export async function uploadDocument(
     const errorMessage =
       await getErrorMessage(
         response,
-        "The PDF could "
-          + "not be uploaded."
+        "The PDF could not be uploaded."
       );
 
     throw new Error(errorMessage);
@@ -421,8 +512,8 @@ export async function getDocuments(
 
   } catch {
     throw new Error(
-      "Cannot connect to "
-        + "Nova's backend."
+      "Nova cannot reach its server "
+        + "right now."
     );
   }
 
@@ -469,8 +560,8 @@ export async function deleteDocument(
 
   } catch {
     throw new Error(
-      "Cannot connect to "
-        + "Nova's backend."
+      "Nova cannot reach its server "
+        + "right now."
     );
   }
 
@@ -508,8 +599,8 @@ export async function deleteConversation(
 
   } catch {
     throw new Error(
-      "Cannot connect to "
-        + "Nova's backend."
+      "Nova cannot reach its server "
+        + "right now."
     );
   }
 

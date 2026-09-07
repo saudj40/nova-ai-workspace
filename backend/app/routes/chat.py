@@ -1,3 +1,5 @@
+import logging
+from collections.abc import Generator
 from typing import Annotated
 
 from fastapi import (
@@ -33,6 +35,8 @@ from app.services.rate_limit import (
 )
 
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 
@@ -49,7 +53,7 @@ def get_conversation_scope(
     except ValueError as error:
         raise HTTPException(
             status_code=400,
-            detail=str(error),
+            detail="Invalid conversation.",
         ) from error
 
 
@@ -64,6 +68,10 @@ def enforce_chat_rate_limit(
         )
 
     except RuntimeError as error:
+        logger.exception(
+            "Chat rate-limit service failed."
+        )
+
         raise HTTPException(
             status_code=503,
             detail=(
@@ -93,6 +101,41 @@ def enforce_chat_rate_limit(
                 str(retry_after),
         },
     )
+
+
+def safe_stream_response(
+    message: str,
+    conversation_id: str,
+) -> Generator[str, None, None]:
+    try:
+        yield from stream_response(
+            message=message,
+            conversation_id=conversation_id,
+        )
+
+    except RuntimeError:
+        logger.exception(
+            "Nova streaming generation failed."
+        )
+
+        yield (
+            "\n\n"
+            "*Nova is temporarily unable to "
+            "complete this response. Please "
+            "try again in a moment.*"
+        )
+
+    except Exception:
+        logger.exception(
+            "Unexpected Nova streaming error."
+        )
+
+        yield (
+            "\n\n"
+            "*Nova encountered a temporary "
+            "problem while generating this "
+            "response. Please try again.*"
+        )
 
 
 @router.post(
@@ -136,9 +179,29 @@ def chat(
         }
 
     except RuntimeError as error:
+        logger.exception(
+            "Nova generation failed."
+        )
+
         raise HTTPException(
             status_code=503,
-            detail=str(error),
+            detail=(
+                "Nova is temporarily unable "
+                "to generate a response."
+            ),
+        ) from error
+
+    except Exception as error:
+        logger.exception(
+            "Unexpected Nova generation error."
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Nova encountered a temporary "
+                "server problem."
+            ),
         ) from error
 
 
@@ -170,13 +233,15 @@ def chat_stream(
     )
 
     return StreamingResponse(
-        stream_response(
+        safe_stream_response(
             message=request.message,
             conversation_id=(
                 scoped_conversation_id
             ),
         ),
-        media_type="text/plain",
+        media_type=(
+            "text/plain; charset=utf-8"
+        ),
         headers={
             "Cache-Control":
                 "no-cache, no-store",
@@ -209,13 +274,27 @@ def delete_conversation(
         )
     )
 
-    conversation_manager.clear(
-        scoped_conversation_id
-    )
+    try:
+        conversation_manager.clear(
+            scoped_conversation_id
+        )
 
-    document_service.delete_conversation_documents(
-        scoped_conversation_id
-    )
+        document_service.delete_conversation_documents(
+            scoped_conversation_id
+        )
+
+    except Exception as error:
+        logger.exception(
+            "Conversation deletion failed."
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Could not delete the "
+                "conversation."
+            ),
+        ) from error
 
     return Response(
         status_code=(
