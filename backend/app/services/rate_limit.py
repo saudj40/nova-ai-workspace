@@ -23,10 +23,14 @@ class RateLimiter:
     CHAT_LIMIT = 12
     CHAT_WINDOW_SECONDS = 60
 
+    UPLOAD_LIMIT = 3
+    UPLOAD_WINDOW_SECONDS = 600
+
     def __init__(self) -> None:
         supabase_url = os.getenv(
             "SUPABASE_URL"
         )
+
         supabase_key = os.getenv(
             "SUPABASE_SERVICE_ROLE_KEY"
         )
@@ -42,9 +46,11 @@ class RateLimiter:
                 "is not configured."
             )
 
-        self.client: Client = create_client(
-            supabase_url,
-            supabase_key,
+        self.client: Client = (
+            create_client(
+                supabase_url,
+                supabase_key,
+            )
         )
 
     @staticmethod
@@ -58,31 +64,40 @@ class RateLimiter:
 
         return f"{bucket}:{digest}"
 
-    def check_chat_limit(
+    def _check_limit(
         self,
         session_id: str,
+        bucket: str,
+        limit: int,
+        window_seconds: int,
     ) -> RateLimitResult:
-        rate_key = self._build_rate_key(
-            session_id=session_id,
-            bucket="chat",
+        rate_key = (
+            self._build_rate_key(
+                session_id=session_id,
+                bucket=bucket,
+            )
         )
 
         try:
             response = self.client.rpc(
                 "check_rate_limit",
                 {
-                    "p_rate_key": rate_key,
-                    "p_limit": self.CHAT_LIMIT,
-                    "p_window_seconds": (
-                        self.CHAT_WINDOW_SECONDS
-                    ),
+                    "p_rate_key":
+                        rate_key,
+                    "p_limit":
+                        limit,
+                    "p_window_seconds":
+                        window_seconds,
                 },
             ).execute()
 
         except Exception as error:
             logger.exception(
-                "Rate-limit check failed."
+                "Rate-limit check failed "
+                "for bucket=%s.",
+                bucket,
             )
+
             raise RuntimeError(
                 "Rate-limit service is "
                 "temporarily unavailable."
@@ -103,6 +118,7 @@ class RateLimiter:
                 allowed=bool(
                     row["allowed"]
                 ),
+
                 remaining=max(
                     0,
                     int(
@@ -112,6 +128,7 @@ class RateLimiter:
                         )
                     ),
                 ),
+
                 retry_after=max(
                     0,
                     int(
@@ -132,6 +149,32 @@ class RateLimiter:
                 "Rate-limit service returned "
                 "an invalid response."
             ) from error
+
+    def check_chat_limit(
+        self,
+        session_id: str,
+    ) -> RateLimitResult:
+        return self._check_limit(
+            session_id=session_id,
+            bucket="chat",
+            limit=self.CHAT_LIMIT,
+            window_seconds=(
+                self.CHAT_WINDOW_SECONDS
+            ),
+        )
+
+    def check_upload_limit(
+        self,
+        session_id: str,
+    ) -> RateLimitResult:
+        return self._check_limit(
+            session_id=session_id,
+            bucket="upload",
+            limit=self.UPLOAD_LIMIT,
+            window_seconds=(
+                self.UPLOAD_WINDOW_SECONDS
+            ),
+        )
 
 
 rate_limiter = RateLimiter()

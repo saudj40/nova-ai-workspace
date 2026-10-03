@@ -1792,3 +1792,564 @@ textarea:focus-visible {
 .topbar-home-button:disabled {
   cursor: default;
 }
+/* =========================================================
+   NOVA TOAST NOTIFICATIONS
+   ========================================================= */
+
+.nova-toast {
+  position: fixed;
+  top: 22px;
+  right: 22px;
+  z-index: 1000;
+
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+
+  width: min(410px, calc(100vw - 32px));
+
+  padding: 14px 14px 14px 15px;
+
+  border: 1px solid
+    rgba(255, 255, 255, 0.09);
+
+  border-radius: 16px;
+
+  background:
+    rgba(18, 18, 18, 0.96);
+
+  box-shadow:
+    0 18px 50px
+      rgba(0, 0, 0, 0.42);
+
+  backdrop-filter:
+    blur(18px);
+
+  -webkit-backdrop-filter:
+    blur(18px);
+
+  animation:
+    nova-toast-enter
+    220ms
+    cubic-bezier(
+      0.22,
+      1,
+      0.36,
+      1
+    );
+}
+
+
+.nova-toast::before {
+  content: "";
+
+  position: absolute;
+  inset: 0;
+
+  pointer-events: none;
+
+  border-radius: inherit;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 161, 84, 0.08),
+      transparent 46%
+    );
+}
+
+
+.nova-toast-success {
+  border-color:
+    rgba(90, 200, 140, 0.22);
+}
+
+
+.nova-toast-warning {
+  border-color:
+    rgba(255, 169, 82, 0.24);
+}
+
+
+.nova-toast-error {
+  border-color:
+    rgba(255, 113, 113, 0.22);
+}
+
+
+.nova-toast-icon {
+  position: relative;
+  z-index: 1;
+
+  display: grid;
+  place-items: center;
+
+  width: 34px;
+  height: 34px;
+
+  flex: 0 0 auto;
+
+  border-radius: 10px;
+
+  color:
+    #f4a261;
+
+  background:
+    rgba(244, 162, 97, 0.1);
+
+  border:
+    1px solid
+    rgba(244, 162, 97, 0.12);
+}
+
+
+.nova-toast-success
+.nova-toast-icon {
+  color:
+    #69d49b;
+
+  background:
+    rgba(105, 212, 155, 0.09);
+
+  border-color:
+    rgba(105, 212, 155, 0.13);
+}
+
+
+.nova-toast-error
+.nova-toast-icon {
+  color:
+    #ff7f7f;
+
+  background:
+    rgba(255, 127, 127, 0.09);
+
+  border-color:
+    rgba(255, 127, 127, 0.13);
+}
+
+
+.nova-toast-content {
+  position: relative;
+  z-index: 1;
+
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+
+  min-width: 0;
+  flex: 1;
+}
+
+
+.nova-toast-content strong {
+  color:
+    rgba(255, 255, 255, 0.93);
+
+  font-size:
+    13px;
+
+  font-weight:
+    600;
+}
+
+
+.nova-toast-content span {
+  color:
+    rgba(255, 255, 255, 0.63);
+
+  font-size:
+    13px;
+
+  line-height:
+    1.45;
+}
+
+
+.nova-toast-close {
+  position: relative;
+  z-index: 1;
+
+  display: grid;
+  place-items: center;
+
+  width: 30px;
+  height: 30px;
+
+  flex: 0 0 auto;
+
+  border: 0;
+
+  border-radius: 9px;
+
+  color:
+    rgba(255, 255, 255, 0.44);
+
+  background:
+    transparent;
+
+  cursor: pointer;
+
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+
+.nova-toast-close:hover {
+  color:
+    rgba(255, 255, 255, 0.86);
+
+  background:
+    rgba(255, 255, 255, 0.06);
+}
+
+
+@keyframes nova-toast-enter {
+  from {
+    opacity: 0;
+
+    transform:
+      translateY(-10px)
+      scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+
+    transform:
+      translateY(0)
+      scale(1);
+  }
+}
+
+
+/* =========================================================
+   NOVA CONFIRMATION MODAL
+   ========================================================= */
+
+.nova-modal-backdrop {
+  position: fixed;
+  inset: 0;
+
+  z-index: 1100;
+
+  display: grid;
+  place-items: center;
+
+  padding: 20px;
+
+  background:
+    rgba(0, 0, 0, 0.64);
+
+  backdrop-filter:
+    blur(8px);
+
+  -webkit-backdrop-filter:
+    blur(8px);
+
+  animation:
+    nova-backdrop-enter
+    180ms
+    ease;
+}
+
+
+.nova-confirm-modal {
+  position: relative;
+
+  width:
+    min(440px, 100%);
+
+  padding: 24px;
+
+  border:
+    1px solid
+    rgba(255, 255, 255, 0.09);
+
+  border-radius:
+    20px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(24, 24, 24, 0.99),
+      rgba(14, 14, 14, 0.99)
+    );
+
+  box-shadow:
+    0 30px 90px
+      rgba(0, 0, 0, 0.55);
+
+  animation:
+    nova-modal-enter
+    220ms
+    cubic-bezier(
+      0.22,
+      1,
+      0.36,
+      1
+    );
+}
+
+
+.nova-confirm-modal::before {
+  content: "";
+
+  position: absolute;
+  inset: 0;
+
+  border-radius:
+    inherit;
+
+  pointer-events:
+    none;
+
+  background:
+    radial-gradient(
+      circle at 12% 0%,
+      rgba(242, 153, 74, 0.1),
+      transparent 38%
+    );
+}
+
+
+.nova-confirm-icon {
+  position: relative;
+  z-index: 1;
+
+  display: grid;
+  place-items: center;
+
+  width: 44px;
+  height: 44px;
+
+  margin-bottom:
+    18px;
+
+  border-radius:
+    13px;
+
+  color:
+    #f3a05d;
+
+  background:
+    rgba(243, 160, 93, 0.1);
+
+  border:
+    1px solid
+    rgba(243, 160, 93, 0.13);
+}
+
+
+.nova-confirm-copy {
+  position: relative;
+  z-index: 1;
+}
+
+
+.nova-confirm-copy h3 {
+  margin:
+    0 0 8px;
+
+  color:
+    rgba(255, 255, 255, 0.95);
+
+  font-size:
+    18px;
+
+  font-weight:
+    600;
+
+  letter-spacing:
+    -0.02em;
+}
+
+
+.nova-confirm-copy p {
+  margin:
+    0;
+
+  color:
+    rgba(255, 255, 255, 0.58);
+
+  font-size:
+    14px;
+
+  line-height:
+    1.55;
+}
+
+
+.nova-confirm-actions {
+  position: relative;
+  z-index: 1;
+
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+
+  margin-top:
+    24px;
+}
+
+
+.nova-confirm-actions button {
+  min-width:
+    88px;
+
+  height:
+    40px;
+
+  padding:
+    0 16px;
+
+  border-radius:
+    11px;
+
+  font-size:
+    13px;
+
+  font-weight:
+    600;
+
+  cursor: pointer;
+
+  transition:
+    transform 150ms ease,
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+
+.nova-confirm-actions button:active {
+  transform:
+    scale(0.97);
+}
+
+
+.nova-confirm-cancel {
+  color:
+    rgba(255, 255, 255, 0.72);
+
+  border:
+    1px solid
+    rgba(255, 255, 255, 0.1);
+
+  background:
+    rgba(255, 255, 255, 0.04);
+}
+
+
+.nova-confirm-cancel:hover {
+  background:
+    rgba(255, 255, 255, 0.07);
+}
+
+
+.nova-confirm-danger {
+  color:
+    #16100c;
+
+  border:
+    1px solid
+    rgba(241, 153, 82, 0.8);
+
+  background:
+    linear-gradient(
+      135deg,
+      #f3a05d,
+      #d98747
+    );
+
+  box-shadow:
+    0 7px 22px
+      rgba(226, 137, 68, 0.15);
+}
+
+
+.nova-confirm-danger:hover {
+  background:
+    linear-gradient(
+      135deg,
+      #ffac69,
+      #e48e4d
+    );
+}
+
+
+@keyframes nova-modal-enter {
+  from {
+    opacity: 0;
+
+    transform:
+      translateY(10px)
+      scale(0.975);
+  }
+
+  to {
+    opacity: 1;
+
+    transform:
+      translateY(0)
+      scale(1);
+  }
+}
+
+
+@keyframes nova-backdrop-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+@media (
+  max-width: 760px
+) {
+
+  .nova-toast {
+    top:
+      max(
+        14px,
+        env(
+          safe-area-inset-top
+        )
+      );
+
+    right: 12px;
+    left: 12px;
+
+    width: auto;
+  }
+
+
+  .nova-confirm-modal {
+    width: 100%;
+
+    padding: 21px;
+
+    border-radius: 18px;
+  }
+
+
+  .nova-confirm-actions {
+    display: grid;
+
+    grid-template-columns:
+      1fr 1fr;
+  }
+
+
+  .nova-confirm-actions button {
+    width: 100%;
+  }
+}

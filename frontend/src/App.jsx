@@ -5,9 +5,13 @@ import {
 } from "react";
 
 import {
+  AlertCircle,
+  CheckCircle2,
+  Info,
   Menu,
   PanelLeftClose,
   Sparkles,
+  X,
 } from "lucide-react";
 
 import Sidebar from "./components/Sidebar";
@@ -26,11 +30,21 @@ import {
 import "./App.css";
 
 
-const STORAGE_KEY =
-  "nova-chats";
+const STORAGE_KEY = "nova-chats";
+const ACTIVE_CHAT_KEY = "nova-active-chat";
 
-const ACTIVE_CHAT_KEY =
-  "nova-active-chat";
+
+function createId() {
+  if (globalThis.crypto?.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return [
+    Date.now().toString(36),
+    Math.random().toString(36).slice(2),
+    Math.random().toString(36).slice(2),
+  ].join("-");
+}
 
 
 function createNewChat() {
@@ -38,7 +52,7 @@ function createNewChat() {
     new Date().toISOString();
 
   return {
-    id: crypto.randomUUID(),
+    id: createId(),
     title: "New conversation",
     messages: [],
     createdAt: now,
@@ -85,7 +99,6 @@ function loadChats() {
 
 
 function App() {
-
   const initialChatsRef =
     useRef(loadChats());
 
@@ -97,6 +110,9 @@ function App() {
 
   const documentLoadRequestRef =
     useRef(0);
+
+  const toastTimerRef =
+    useRef(null);
 
 
   const [
@@ -111,7 +127,6 @@ function App() {
     activeChatId,
     setActiveChatId,
   ] = useState(() => {
-
     const savedActiveChatId =
       localStorage.getItem(
         ACTIVE_CHAT_KEY
@@ -131,13 +146,6 @@ function App() {
   });
 
 
-  /*
-   * Home is intentionally separate
-   * from conversation state.
-   *
-   * Nova always opens on Home,
-   * while previous chats remain saved.
-   */
   const [
     isHome,
     setIsHome,
@@ -175,10 +183,25 @@ function App() {
 
 
   const [
+    toast,
+    setToast,
+  ] = useState(null);
+
+
+  const [
+    confirmation,
+    setConfirmation,
+  ] = useState(null);
+
+
+  const [
     sidebarOpen,
     setSidebarOpen,
   ] = useState(() => {
-    if (typeof window === "undefined") {
+    if (
+      typeof window
+      === "undefined"
+    ) {
       return true;
     }
 
@@ -209,34 +232,69 @@ function App() {
     );
 
 
-  useEffect(() => {
+  function hideToast() {
+    if (
+      toastTimerRef.current
+    ) {
+      clearTimeout(
+        toastTimerRef.current
+      );
 
+      toastTimerRef.current = null;
+    }
+
+    setToast(null);
+  }
+
+
+  function showToast(
+    message,
+    type = "error",
+    duration = 4500
+  ) {
+    if (
+      toastTimerRef.current
+    ) {
+      clearTimeout(
+        toastTimerRef.current
+      );
+    }
+
+    setToast({
+      id: createId(),
+      message,
+      type,
+    });
+
+    toastTimerRef.current =
+      setTimeout(() => {
+        setToast(null);
+
+        toastTimerRef.current =
+          null;
+      }, duration);
+  }
+
+
+  useEffect(() => {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(chats)
     );
-
   }, [chats]);
 
 
   useEffect(() => {
-
     if (activeChatId) {
       localStorage.setItem(
         ACTIVE_CHAT_KEY,
         activeChatId
       );
     }
-
   }, [activeChatId]);
 
 
-  /*
-   * Load documents only when the
-   * user is actually inside a chat.
-   */
   useEffect(() => {
-
     if (
       isHome ||
       !activeChatId
@@ -260,16 +318,13 @@ function App() {
 
 
     async function loadDocuments() {
-
       setIsLoadingDocuments(true);
 
       try {
-
         const documents =
           await getDocuments(
             activeChatId
           );
-
 
         if (
           documentLoadRequestRef
@@ -277,21 +332,18 @@ function App() {
         ) {
           return;
         }
-
 
         setUploadedDocuments(
           documents
         );
 
       } catch (error) {
-
         if (
           documentLoadRequestRef
             .current !== requestId
         ) {
           return;
         }
-
 
         console.error(
           "Could not load documents:",
@@ -301,7 +353,6 @@ function App() {
         setUploadedDocuments([]);
 
       } finally {
-
         if (
           documentLoadRequestRef
             .current === requestId
@@ -323,7 +374,6 @@ function App() {
 
 
   useEffect(() => {
-
     const conversationArea =
       conversationAreaRef.current;
 
@@ -331,11 +381,11 @@ function App() {
       return;
     }
 
-
     conversationArea.scrollTo({
       top:
         conversationArea
           .scrollHeight,
+
       behavior: "smooth",
     });
 
@@ -347,12 +397,18 @@ function App() {
 
 
   useEffect(() => {
-
     return () => {
       abortControllerRef
         .current?.abort();
-    };
 
+      if (
+        toastTimerRef.current
+      ) {
+        clearTimeout(
+          toastTimerRef.current
+        );
+      }
+    };
   }, []);
 
 
@@ -388,6 +444,14 @@ function App() {
     function handleEscape(event) {
       if (
         event.key === "Escape" &&
+        confirmation
+      ) {
+        setConfirmation(null);
+        return;
+      }
+
+      if (
+        event.key === "Escape" &&
         sidebarOpen &&
         window.matchMedia(
           "(max-width: 760px)"
@@ -408,7 +472,11 @@ function App() {
         handleEscape
       );
     };
-  }, [sidebarOpen]);
+
+  }, [
+    sidebarOpen,
+    confirmation,
+  ]);
 
 
   function closeSidebarOnMobile() {
@@ -426,18 +494,15 @@ function App() {
     chatId,
     updater
   ) {
-
     setChats(
       (currentChats) =>
         currentChats.map(
           (chat) => {
-
             if (
               chat.id !== chatId
             ) {
               return chat;
             }
-
 
             return {
               ...chat,
@@ -457,24 +522,14 @@ function App() {
   }
 
 
-  /*
-   * Finds an unused empty chat,
-   * otherwise creates a new one.
-   *
-   * Used when sending/uploading
-   * directly from Home.
-   */
   function prepareHomeChat() {
-
     const emptyExistingChat =
       chats.find(
         (chat) =>
           chat.messages.length === 0
       );
 
-
     if (emptyExistingChat) {
-
       setActiveChatId(
         emptyExistingChat.id
       );
@@ -488,7 +543,6 @@ function App() {
     const newChat =
       createNewChat();
 
-
     setChats(
       (currentChats) => [
         newChat,
@@ -496,13 +550,11 @@ function App() {
       ]
     );
 
-
     setActiveChatId(
       newChat.id
     );
 
     setIsHome(false);
-
 
     return newChat.id;
   }
@@ -511,10 +563,8 @@ function App() {
   async function handleSend(
     message
   ) {
-
     const trimmedMessage =
       message.trim();
-
 
     if (
       !trimmedMessage ||
@@ -528,23 +578,20 @@ function App() {
     let targetChatId =
       activeChat?.id;
 
-
     if (isHome) {
-
       targetChatId =
         prepareHomeChat();
 
     } else if (
       !targetChatId
     ) {
-
       targetChatId =
         prepareHomeChat();
     }
 
 
     const userMessage = {
-      id: crypto.randomUUID(),
+      id: createId(),
       role: "user",
       content:
         trimmedMessage,
@@ -552,20 +599,21 @@ function App() {
 
 
     const assistantMessageId =
-      crypto.randomUUID();
+      createId();
 
 
     const assistantMessage = {
       id:
         assistantMessageId,
+
       role: "assistant",
+
       content: "",
     };
 
 
     const controller =
       new AbortController();
-
 
     abortControllerRef
       .current = controller;
@@ -575,7 +623,6 @@ function App() {
       (currentChats) =>
         currentChats.map(
           (chat) => {
-
             if (
               chat.id !==
               targetChatId
@@ -626,13 +673,11 @@ function App() {
 
 
     try {
-
       await streamMessage(
         trimmedMessage,
         targetChatId,
 
         (chunk) => {
-
           updateChatMessages(
             targetChatId,
 
@@ -643,7 +688,6 @@ function App() {
                 (
                   currentMessage
                 ) =>
-
                   currentMessage.id ===
                   assistantMessageId
 
@@ -665,12 +709,10 @@ function App() {
       );
 
     } catch (error) {
-
       if (
         error.name ===
         "AbortError"
       ) {
-
         updateChatMessages(
           targetChatId,
 
@@ -681,7 +723,6 @@ function App() {
               (
                 currentMessage
               ) => {
-
                 if (
                   currentMessage.id !==
                   assistantMessageId
@@ -689,12 +730,10 @@ function App() {
                   return currentMessage;
                 }
 
-
                 const existingContent =
                   currentMessage
                     .content
                     .trim();
-
 
                 return {
                   ...currentMessage,
@@ -709,6 +748,11 @@ function App() {
         );
 
       } else {
+        showToast(
+          error.message ||
+            "Nova could not complete the response.",
+          "error"
+        );
 
         updateChatMessages(
           targetChatId,
@@ -720,7 +764,6 @@ function App() {
               (
                 currentMessage
               ) =>
-
                 currentMessage.id ===
                 assistantMessageId
 
@@ -728,7 +771,7 @@ function App() {
                       ...currentMessage,
 
                       content:
-                        `**Connection error:** ${error.message}`,
+                        "*Nova couldn't complete this response. Please try again.*",
                     }
 
                   : currentMessage
@@ -737,7 +780,6 @@ function App() {
       }
 
     } finally {
-
       abortControllerRef
         .current = null;
 
@@ -747,7 +789,6 @@ function App() {
 
 
   function handleStopGeneration() {
-
     if (
       !isLoading ||
       !abortControllerRef
@@ -755,7 +796,6 @@ function App() {
     ) {
       return;
     }
-
 
     abortControllerRef
       .current.abort();
@@ -765,7 +805,6 @@ function App() {
   async function handleUploadDocument(
     file
   ) {
-
     if (
       isLoading ||
       isUploading
@@ -783,9 +822,9 @@ function App() {
 
 
     if (!isPdf) {
-
-      window.alert(
-        "Please select a PDF file."
+      showToast(
+        "Please select a PDF file.",
+        "warning"
       );
 
       return;
@@ -800,7 +839,6 @@ function App() {
       isHome ||
       !targetChatId
     ) {
-
       targetChatId =
         prepareHomeChat();
     }
@@ -810,13 +848,11 @@ function App() {
 
 
     try {
-
       const document =
         await uploadDocument(
           file,
           targetChatId
         );
-
 
       setUploadedDocuments(
         (
@@ -827,23 +863,28 @@ function App() {
         ]
       );
 
-    } catch (error) {
+      showToast(
+        `${document.filename} is ready.`,
+        "success",
+        3200
+      );
 
-      window.alert(
-        error.message
+    } catch (error) {
+      showToast(
+        error.message ||
+          "Nova could not process this PDF.",
+        "error"
       );
 
     } finally {
-
       setIsUploading(false);
     }
   }
 
 
-  async function handleDeleteDocument(
+  function handleDeleteDocument(
     document
   ) {
-
     if (
       !activeChat ||
       isHome ||
@@ -855,64 +896,66 @@ function App() {
     }
 
 
-    const shouldDelete =
-      window.confirm(
-        `Remove "${document.filename}" from this conversation?`
-      );
+    setConfirmation({
+      title: "Remove document?",
 
+      message:
+        `"${document.filename}" will be removed from this conversation.`,
 
-    if (!shouldDelete) {
-      return;
-    }
+      confirmLabel:
+        "Remove",
 
+      action: async () => {
+        setDeletingDocumentId(
+          document.id
+        );
 
-    setDeletingDocumentId(
-      document.id
-    );
+        try {
+          await deleteDocument(
+            activeChat.id,
+            document.id
+          );
 
-
-    try {
-
-      await deleteDocument(
-        activeChat.id,
-        document.id
-      );
-
-
-      setUploadedDocuments(
-        (
-          currentDocuments
-        ) =>
-          currentDocuments.filter(
+          setUploadedDocuments(
             (
-              currentDocument
+              currentDocuments
             ) =>
-              currentDocument.id !==
-              document.id
-          )
-      );
+              currentDocuments.filter(
+                (
+                  currentDocument
+                ) =>
+                  currentDocument.id !==
+                  document.id
+              )
+          );
 
-    } catch (error) {
+          showToast(
+            "Document removed.",
+            "success",
+            3000
+          );
 
-      window.alert(
-        error.message
-      );
+        } catch (error) {
+          showToast(
+            error.message ||
+              "Could not remove the document.",
+            "error"
+          );
 
-    } finally {
-
-      setDeletingDocumentId(
-        null
-      );
-    }
+        } finally {
+          setDeletingDocumentId(
+            null
+          );
+        }
+      },
+    });
   }
 
 
   function handleHome() {
-
     if (interfaceLocked) {
       return;
     }
-
 
     setIsHome(true);
 
@@ -923,7 +966,6 @@ function App() {
 
 
   function handleNewChat() {
-
     if (interfaceLocked) {
       return;
     }
@@ -937,7 +979,6 @@ function App() {
 
 
     if (emptyExistingChat) {
-
       setActiveChatId(
         emptyExistingChat.id
       );
@@ -975,11 +1016,9 @@ function App() {
   function handleSelectChat(
     chatId
   ) {
-
     if (interfaceLocked) {
       return;
     }
-
 
     setActiveChatId(chatId);
 
@@ -992,7 +1031,6 @@ function App() {
   function handleRenameChat(
     chatId
   ) {
-
     if (interfaceLocked) {
       return;
     }
@@ -1035,7 +1073,6 @@ function App() {
           (
             currentChat
           ) =>
-
             currentChat.id ===
             chatId
 
@@ -1056,10 +1093,9 @@ function App() {
   }
 
 
-  async function handleDeleteChat(
+  function handleDeleteChat(
     chatId
   ) {
-
     if (interfaceLocked) {
       return;
     }
@@ -1080,98 +1116,269 @@ function App() {
     }
 
 
-    const shouldDelete =
-      window.confirm(
-        `Delete "${chat.title}"?`
-      );
+    setConfirmation({
+      title:
+        "Delete conversation?",
+
+      message:
+        `"${chat.title}" and its stored Nova context will be deleted.`,
+
+      confirmLabel:
+        "Delete",
+
+      action: async () => {
+        try {
+          await deleteConversation(
+            chatId
+          );
+
+        } catch (error) {
+          showToast(
+            error.message ||
+              "Could not delete the conversation.",
+            "error"
+          );
+
+          return;
+        }
 
 
-    if (!shouldDelete) {
+        const remainingChats =
+          chats.filter(
+            (
+              currentChat
+            ) =>
+              currentChat.id !==
+              chatId
+          );
+
+
+        if (
+          remainingChats.length === 0
+        ) {
+          const newChat =
+            createNewChat();
+
+          setChats([
+            newChat,
+          ]);
+
+          setActiveChatId(
+            newChat.id
+          );
+
+          setIsHome(true);
+
+          setUploadedDocuments([]);
+
+          showToast(
+            "Conversation deleted.",
+            "success",
+            3000
+          );
+
+          return;
+        }
+
+
+        setChats(
+          remainingChats
+        );
+
+
+        if (
+          activeChatId === chatId
+        ) {
+          setActiveChatId(
+            remainingChats[0].id
+          );
+
+          setIsHome(true);
+
+          setUploadedDocuments([]);
+        }
+
+
+        showToast(
+          "Conversation deleted.",
+          "success",
+          3000
+        );
+      },
+    });
+  }
+
+
+  async function confirmCurrentAction() {
+    const action =
+      confirmation?.action;
+
+    setConfirmation(null);
+
+    if (!action) {
       return;
     }
 
+    await action();
+  }
 
-    try {
 
-      await deleteConversation(
-        chatId
+  function getToastIcon() {
+    if (
+      toast?.type ===
+      "success"
+    ) {
+      return (
+        <CheckCircle2
+          size={19}
+        />
       );
-
-    } catch (error) {
-
-      window.alert(
-        error.message
-      );
-
-      return;
     }
-
-
-    const remainingChats =
-      chats.filter(
-        (
-          currentChat
-        ) =>
-          currentChat.id !==
-          chatId
-      );
-
 
     if (
-      remainingChats.length === 0
+      toast?.type ===
+      "warning"
     ) {
-
-      const newChat =
-        createNewChat();
-
-
-      setChats([
-        newChat,
-      ]);
-
-
-      setActiveChatId(
-        newChat.id
+      return (
+        <AlertCircle
+          size={19}
+        />
       );
-
-
-      setIsHome(true);
-
-      setUploadedDocuments([]);
-
-      return;
     }
 
+    if (
+      toast?.type ===
+      "info"
+    ) {
+      return (
+        <Info
+          size={19}
+        />
+      );
+    }
 
-    setChats(
-      remainingChats
+    return (
+      <AlertCircle
+        size={19}
+      />
     );
-
-
-    if (
-      activeChatId === chatId
-    ) {
-
-      setActiveChatId(
-        remainingChats[0].id
-      );
-
-
-      /*
-       * If the user deleted the chat
-       * they were viewing, return Home
-       * instead of unexpectedly opening
-       * another conversation.
-       */
-      setIsHome(true);
-
-      setUploadedDocuments([]);
-    }
   }
 
 
   return (
     <div className="app-shell">
+
+      {toast && (
+        <div
+          className={
+            `nova-toast nova-toast-${toast.type}`
+          }
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className="nova-toast-icon"
+          >
+            {getToastIcon()}
+          </div>
+
+          <div
+            className="nova-toast-content"
+          >
+            <strong>
+              {toast.type === "success"
+                ? "Done"
+                : toast.type === "warning"
+                  ? "Heads up"
+                  : toast.type === "info"
+                    ? "Nova"
+                    : "Something went wrong"}
+            </strong>
+
+            <span>
+              {toast.message}
+            </span>
+          </div>
+
+          <button
+            className="nova-toast-close"
+            onClick={hideToast}
+            aria-label="Dismiss notification"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+
+      {confirmation && (
+        <div
+          className="nova-modal-backdrop"
+          onMouseDown={() =>
+            setConfirmation(null)
+          }
+        >
+          <div
+            className="nova-confirm-modal"
+            onMouseDown={(
+              event
+            ) =>
+              event.stopPropagation()
+            }
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="nova-confirm-title"
+          >
+            <div
+              className="nova-confirm-icon"
+            >
+              <AlertCircle
+                size={22}
+              />
+            </div>
+
+            <div
+              className="nova-confirm-copy"
+            >
+              <h3
+                id="nova-confirm-title"
+              >
+                {confirmation.title}
+              </h3>
+
+              <p>
+                {confirmation.message}
+              </p>
+            </div>
+
+            <div
+              className="nova-confirm-actions"
+            >
+              <button
+                className="nova-confirm-cancel"
+                onClick={() =>
+                  setConfirmation(null)
+                }
+              >
+                Cancel
+              </button>
+
+              <button
+                className="nova-confirm-danger"
+                onClick={
+                  confirmCurrentAction
+                }
+              >
+                {
+                  confirmation
+                    .confirmLabel
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       <div
         className={
@@ -1182,7 +1389,6 @@ function App() {
           }`
         }
       >
-
         <Sidebar
           chats={chats}
 
@@ -1220,16 +1426,17 @@ function App() {
             interfaceLocked
           }
         />
-
       </div>
 
 
       {sidebarOpen && (
         <button
           className="sidebar-backdrop"
+
           onClick={() =>
             setSidebarOpen(false)
           }
+
           aria-label="Close sidebar"
         />
       )}
@@ -1251,7 +1458,6 @@ function App() {
 
             aria-label="Toggle sidebar"
           >
-
             {sidebarOpen ? (
               <PanelLeftClose
                 size={20}
@@ -1261,7 +1467,6 @@ function App() {
                 size={20}
               />
             )}
-
           </button>
 
 
@@ -1278,7 +1483,6 @@ function App() {
 
             aria-label="Go to Nova home"
           >
-
             <Sparkles
               size={17}
             />
@@ -1290,7 +1494,6 @@ function App() {
                     ?.title ||
                   "Nova"}
             </span>
-
           </button>
 
 
@@ -1311,7 +1514,6 @@ function App() {
         >
 
           {isHome ? (
-
             <WelcomeScreen
               onSuggestionClick={
                 handleSend
@@ -1319,7 +1521,6 @@ function App() {
             />
 
           ) : messages.length === 0 ? (
-
             <WelcomeScreen
               onSuggestionClick={
                 handleSend
@@ -1327,14 +1528,12 @@ function App() {
             />
 
           ) : (
-
             <div className="messages-container">
 
               {messages.map(
                 (
                   message
                 ) => (
-
                   <MessageBubble
                     key={
                       message.id
@@ -1344,18 +1543,15 @@ function App() {
                       message
                     }
                   />
-
                 )
               )}
 
 
               {isLoading && (
-
                 <div className="streaming-status">
                   <span />
                   Nova is generating
                 </div>
-
               )}
 
             </div>
@@ -1398,10 +1594,13 @@ function App() {
           deletingDocumentId={
             deletingDocumentId
           }
+
+          isLoadingDocuments={
+            isLoadingDocuments
+          }
         />
 
       </main>
-
     </div>
   );
 }

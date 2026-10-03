@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import (
@@ -17,6 +18,12 @@ from app.core.session import (
 from app.services.documents import (
     document_service,
 )
+from app.services.rate_limit import (
+    rate_limiter,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
@@ -38,8 +45,55 @@ def get_conversation_scope(
     except ValueError as error:
         raise HTTPException(
             status_code=400,
-            detail=str(error),
+            detail="Invalid conversation.",
         ) from error
+
+
+def enforce_upload_rate_limit(
+    session_id: str,
+) -> None:
+    try:
+        result = (
+            rate_limiter.check_upload_limit(
+                session_id=session_id
+            )
+        )
+
+    except RuntimeError as error:
+        logger.exception(
+            "Upload rate-limit service failed."
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Nova's upload protection "
+                "service is temporarily "
+                "unavailable."
+            ),
+        ) from error
+
+    if result.allowed:
+        return
+
+    retry_after = max(
+        1,
+        result.retry_after,
+    )
+
+    raise HTTPException(
+        status_code=429,
+        detail=(
+            "Too many document uploads. "
+            "Please wait before uploading "
+            "another PDF."
+        ),
+        headers={
+            "Retry-After": str(
+                retry_after
+            ),
+        },
+    )
 
 
 @router.post(
@@ -64,6 +118,10 @@ async def upload_document(
         ),
     ],
 ):
+    enforce_upload_rate_limit(
+        session_id=session_id
+    )
+
     scoped_conversation_id = (
         get_conversation_scope(
             session_id=session_id,
@@ -82,9 +140,21 @@ async def upload_document(
     )
 
     try:
-        file_content = (
-            await file.read()
+        file_content = await file.read(
+            document_service.MAX_FILE_SIZE + 1
         )
+
+        if (
+            len(file_content)
+            > document_service.MAX_FILE_SIZE
+        ):
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    "The PDF exceeds "
+                    "the 15 MB limit."
+                ),
+            )
 
         return (
             document_service.save_document(
@@ -97,20 +167,40 @@ async def upload_document(
             )
         )
 
+    except HTTPException:
+        raise
+
     except ValueError as error:
         raise HTTPException(
-            status_code=(
-                status.HTTP_400_BAD_REQUEST
-            ),
+            status_code=400,
             detail=str(error),
         ) from error
 
     except RuntimeError as error:
+        logger.exception(
+            "Document upload failed."
+        )
+
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
+            status_code=503,
+            detail=(
+                "Nova is temporarily unable "
+                "to process this document."
             ),
-            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        logger.exception(
+            "Unexpected document upload error."
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Nova encountered a temporary "
+                "problem while processing "
+                "this document."
+            ),
         ) from error
 
     finally:
@@ -151,19 +241,28 @@ def get_conversation_documents(
 
     except ValueError as error:
         raise HTTPException(
-            status_code=(
-                status.HTTP_400_BAD_REQUEST
-            ),
+            status_code=400,
             detail=str(error),
+        ) from error
+
+    except Exception as error:
+        logger.exception(
+            "Document listing failed."
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Could not load conversation "
+                "documents."
+            ),
         ) from error
 
 
 @router.delete(
     "/conversation/{conversation_id}/"
     "{document_id}",
-    status_code=(
-        status.HTTP_204_NO_CONTENT
-    ),
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 def delete_document(
     conversation_id: str,
@@ -196,25 +295,40 @@ def delete_document(
 
     except ValueError as error:
         raise HTTPException(
-            status_code=(
-                status.HTTP_400_BAD_REQUEST
-            ),
+            status_code=400,
             detail=str(error),
         ) from error
 
     except RuntimeError as error:
+        logger.exception(
+            "Document deletion failed."
+        )
+
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
+            status_code=500,
+            detail=(
+                "Could not delete "
+                "the document."
             ),
-            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        logger.exception(
+            "Unexpected document "
+            "deletion error."
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Could not delete "
+                "the document."
+            ),
         ) from error
 
     if not was_deleted:
         raise HTTPException(
-            status_code=(
-                status.HTTP_404_NOT_FOUND
-            ),
+            status_code=404,
             detail=(
                 "Document was not found."
             ),
