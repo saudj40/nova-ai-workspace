@@ -1,0 +1,12 @@
+<svg width="184" height="48" viewBox="0 0 184 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="nova-amber" x1="4" y1="4" x2="48" y2="45" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFC07D"/>
+      <stop offset="0.52" stop-color="#ED9A5A"/>
+      <stop offset="1" stop-color="#D97A3C"/>
+    </linearGradient>
+  </defs>
+  <path d="M20.7 5.8c.8-2.7 4.7-2.7 5.5 0l1.6 5.2a13.3 13.3 0 0 0 8.8 8.8l5.2 1.6c2.7.8 2.7 4.7 0 5.5l-5.2 1.6a13.3 13.3 0 0 0-8.8 8.8l-1.6 5.2c-.8 2.7-4.7 2.7-5.5 0l-1.6-5.2a13.3 13.3 0 0 0-8.8-8.8l-5.2-1.6c-2.7-.8-2.7-4.7 0-5.5l5.2-1.6a13.3 13.3 0 0 0 8.8-8.8l1.6-5.2Z" stroke="url(#nova-amber)" stroke-width="3.2" stroke-linejoin="round"/>
+  <path d="M39.6 4.9c.5-1.5 2.6-1.5 3 0l.5 1.7a4.3 4.3 0 0 0 2.9 2.9l1.7.5c1.5.5 1.5 2.6 0 3l-1.7.5a4.3 4.3 0 0 0-2.9 2.9l-.5 1.7c-.5 1.5-2.6 1.5-3 0l-.5-1.7a4.3 4.3 0 0 0-2.9-2.9l-1.7-.5c-1.5-.5-1.5-2.6 0-3l1.7-.5a4.3 4.3 0 0 0 2.9-2.9l.5-1.7Z" fill="url(#nova-amber)"/>
+  <text x="58" y="32" fill="#F5F1E9" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="27" font-weight="550" letter-spacing="-1">Nova</text>
+</svg>

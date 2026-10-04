@@ -1,12 +1,25 @@
+import { useEffect, useRef, useState } from "react";
+
 import {
   MessageSquare,
   MessageSquarePlus,
   Pencil,
-  Sparkles,
   Trash2,
+  LogOut,
+  ChevronUp,
   X,
 } from "lucide-react";
 
+import NovaLogo from "./NovaLogo";
+
+function getAccountInitials(email) {
+  const local = (email || "Nova").split("@")[0];
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
+  }
+  return local.slice(0, 2).toUpperCase() || "N";
+}
 
 function Sidebar({
   chats,
@@ -18,7 +31,37 @@ function Sidebar({
   onDeleteChat,
   onClose,
   isLoading,
+  userEmail,
+  onSignOut,
+  isSigningOut,
 }) {
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const footerRef = useRef(null);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!footerRef.current?.contains(event.target)) {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [accountMenuOpen]);
+
   return (
     <aside className="sidebar">
       <button
@@ -37,14 +80,7 @@ function Sidebar({
         aria-label="Go to Nova home"
         title="Nova Home"
       >
-        <div className="brand-icon">
-          <Sparkles size={22} />
-        </div>
-
-        <div>
-          <h1>Nova</h1>
-          <span>AI Workspace</span>
-        </div>
+        <NovaLogo size="md" subtitle="AI Workspace" />
       </button>
 
       <button
@@ -118,12 +154,63 @@ function Sidebar({
         </div>
       </div>
 
-      <div className="local-status">
-        <span className="status-dot" />
+      <div className="sidebar-footer" ref={footerRef}>
+        {accountMenuOpen && (
+          <div className="account-menu" role="menu" aria-label="Account menu">
+            <div className="account-menu-identity">
+              <span>Signed in as</span>
+              <strong title={userEmail || "Signed in"}>
+                {userEmail || "Signed in"}
+              </strong>
+            </div>
 
-        <div>
-          <strong>Hosted AI</strong>
-          <p>Nemotron 3 Ultra</p>
+            <button
+              type="button"
+              role="menuitem"
+              className="account-menu-action"
+              onClick={onSignOut}
+              disabled={isLoading || isSigningOut}
+            >
+              <LogOut size={15} />
+              <span>{isSigningOut ? "Logging out..." : "Log out"}</span>
+            </button>
+          </div>
+        )}
+
+        <button
+          type="button"
+          className={`sidebar-account ${accountMenuOpen ? "open" : ""}`}
+          onClick={() => setAccountMenuOpen((current) => !current)}
+          aria-expanded={accountMenuOpen}
+          aria-haspopup="menu"
+        >
+          <span className="sidebar-account-avatar" aria-hidden="true">
+            {getAccountInitials(userEmail)}
+          </span>
+
+          <span className="sidebar-account-copy">
+            <strong title={userEmail || "Signed in"}>
+              {userEmail || "Signed in"}
+            </strong>
+            <span>Personal workspace</span>
+          </span>
+
+          <ChevronUp
+            size={15}
+            className={`account-chevron ${accountMenuOpen ? "open" : ""}`}
+            aria-hidden="true"
+          />
+        </button>
+
+        <div className="local-status">
+          <span className="status-dot" />
+
+          <div className="local-status-copy">
+            <strong>Nemotron 3 Ultra</strong>
+            <p>Hosted AI</p>
+          </div>
+
+          <span className="model-state">Online</span>
         </div>
       </div>
     </aside>

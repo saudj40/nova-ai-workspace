@@ -23,6 +23,9 @@ class RateLimiter:
     CHAT_LIMIT = 12
     CHAT_WINDOW_SECONDS = 60
 
+    DEMO_LIMIT = 3
+    DEMO_WINDOW_SECONDS = 600
+
     UPLOAD_LIMIT = 3
     UPLOAD_WINDOW_SECONDS = 600
 
@@ -160,6 +163,19 @@ class RateLimiter:
             limit=self.CHAT_LIMIT,
             window_seconds=(
                 self.CHAT_WINDOW_SECONDS
+            ),
+        )
+
+    def check_demo_limit(
+        self,
+        session_id: str,
+    ) -> RateLimitResult:
+        return self._check_limit(
+            session_id=session_id,
+            bucket="demo",
+            limit=self.DEMO_LIMIT,
+            window_seconds=(
+                self.DEMO_WINDOW_SECONDS
             ),
         )
 

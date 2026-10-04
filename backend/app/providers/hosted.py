@@ -45,6 +45,7 @@ class HostedProvider(AIProvider):
         return {
             "Authorization":
                 f"Bearer {AI_API_KEY}",
+
             "Content-Type":
                 "application/json",
         }
@@ -65,10 +66,16 @@ class HostedProvider(AIProvider):
         if not error:
             return None
 
-        if isinstance(error, str):
+        if isinstance(
+            error,
+            str,
+        ):
             return error
 
-        if isinstance(error, dict):
+        if isinstance(
+            error,
+            dict,
+        ):
             return (
                 error.get("message")
                 or str(error)
@@ -90,18 +97,33 @@ class HostedProvider(AIProvider):
         try:
             data = response.json()
 
-            if isinstance(data, dict):
-                error = data.get("error")
+            if isinstance(
+                data,
+                dict,
+            ):
+                error = data.get(
+                    "error"
+                )
 
-                if isinstance(error, dict):
-                    message = error.get(
-                        "message"
+                if isinstance(
+                    error,
+                    dict,
+                ):
+                    message = (
+                        error.get(
+                            "message"
+                        )
                     )
 
                     if message:
-                        return str(message)
+                        return str(
+                            message
+                        )
 
-                if isinstance(error, str):
+                if isinstance(
+                    error,
+                    str,
+                ):
                     return error
 
         except ValueError:
@@ -116,25 +138,39 @@ class HostedProvider(AIProvider):
         model: str,
         messages: list,
         stream: bool,
+        max_tokens: int = MAX_OUTPUT_TOKENS,
     ) -> dict:
         return {
-            "model": model,
-            "messages": messages,
-            "temperature": 0.3,
+            "model":
+                model,
+
+            "messages":
+                messages,
+
+            "temperature":
+                0.3,
+
             "max_tokens":
-                MAX_OUTPUT_TOKENS,
-            "stream": stream,
+                max_tokens,
+
+            "stream":
+                stream,
         }
 
     def _request_non_streaming(
         self,
         model: str,
         messages: list,
-    ) -> tuple[str, str | None]:
-        payload = self._build_payload(
-            model=model,
-            messages=messages,
-            stream=False,
+    ) -> tuple[
+        str,
+        str | None,
+    ]:
+        payload = (
+            self._build_payload(
+                model=model,
+                messages=messages,
+                stream=False,
+            )
         )
 
         logger.info(
@@ -152,18 +188,24 @@ class HostedProvider(AIProvider):
 
             response.raise_for_status()
 
-        except requests.exceptions.Timeout as error:
+        except (
+            requests.exceptions.Timeout
+        ) as error:
             raise RuntimeError(
                 f"Model {model} timed out."
             ) from error
 
-        except requests.exceptions.ConnectionError as error:
+        except (
+            requests.exceptions.ConnectionError
+        ) as error:
             raise RuntimeError(
-                f"Could not connect while "
+                "Could not connect while "
                 f"using model {model}."
             ) from error
 
-        except requests.exceptions.HTTPError as error:
+        except (
+            requests.exceptions.HTTPError
+        ) as error:
             detail = (
                 self._safe_error_detail(
                     response
@@ -176,16 +218,20 @@ class HostedProvider(AIProvider):
                 f"{detail}"
             ) from error
 
-        except requests.exceptions.RequestException as error:
+        except (
+            requests.exceptions.RequestException
+        ) as error:
             raise RuntimeError(
-                f"Request failed for "
+                "Request failed for "
                 f"model {model}."
             ) from error
 
         try:
             data = response.json()
 
-        except requests.exceptions.JSONDecodeError as error:
+        except (
+            requests.exceptions.JSONDecodeError
+        ) as error:
             raise RuntimeError(
                 f"Model {model} returned "
                 "invalid JSON."
@@ -200,12 +246,14 @@ class HostedProvider(AIProvider):
         if provider_error:
             raise RuntimeError(
                 f"Model {model} returned "
-                f"an error: "
+                "an error: "
                 f"{provider_error}"
             )
 
         try:
-            choice = data["choices"][0]
+            choice = (
+                data["choices"][0]
+            )
 
             assistant_response = (
                 choice["message"]
@@ -243,14 +291,18 @@ class HostedProvider(AIProvider):
 
     def generate(
         self,
+        user_id: str,
         message: str,
         conversation_id: str,
     ) -> str:
-        messages = self.build_messages(
-            message=message,
-            conversation_id=(
-                conversation_id
-            ),
+        messages = (
+            self.build_messages(
+                user_id=user_id,
+                message=message,
+                conversation_id=(
+                    conversation_id
+                ),
+            )
         )
 
         last_error = None
@@ -260,9 +312,11 @@ class HostedProvider(AIProvider):
                 (
                     assistant_response,
                     finish_reason,
-                ) = self._request_non_streaming(
-                    model=model,
-                    messages=messages,
+                ) = (
+                    self._request_non_streaming(
+                        model=model,
+                        messages=messages,
+                    )
                 )
 
                 logger.info(
@@ -289,10 +343,14 @@ class HostedProvider(AIProvider):
                     )
 
                 self.save_conversation(
+                    user_id=user_id,
+
                     user_message=message,
+
                     assistant_message=(
                         assistant_response
                     ),
+
                     conversation_id=(
                         conversation_id
                     ),
@@ -323,15 +381,23 @@ class HostedProvider(AIProvider):
         self,
         model: str,
         messages: list,
+        max_tokens: int = MAX_OUTPUT_TOKENS,
     ) -> Generator[
-        tuple[str, str | None, bool],
+        tuple[
+            str,
+            str | None,
+            bool,
+        ],
         None,
         None,
     ]:
-        payload = self._build_payload(
-            model=model,
-            messages=messages,
-            stream=True,
+        payload = (
+            self._build_payload(
+                model=model,
+                messages=messages,
+                stream=True,
+                max_tokens=max_tokens,
+            )
         )
 
         logger.info(
@@ -366,9 +432,11 @@ class HostedProvider(AIProvider):
 
                     try:
                         line = (
-                            raw_line.decode(
+                            raw_line
+                            .decode(
                                 "utf-8"
-                            ).strip()
+                            )
+                            .strip()
                         )
 
                     except UnicodeDecodeError:
@@ -387,7 +455,8 @@ class HostedProvider(AIProvider):
                         continue
 
                     data_text = (
-                        line[5:].strip()
+                        line[5:]
+                        .strip()
                     )
 
                     if (
@@ -402,7 +471,9 @@ class HostedProvider(AIProvider):
                             data_text
                         )
 
-                    except json.JSONDecodeError:
+                    except (
+                        json.JSONDecodeError
+                    ):
                         logger.warning(
                             "Skipped invalid "
                             "OpenRouter SSE data. "
@@ -413,7 +484,8 @@ class HostedProvider(AIProvider):
                         continue
 
                     provider_error = (
-                        self._extract_provider_error(
+                        self
+                        ._extract_provider_error(
                             data
                         )
                     )
@@ -425,9 +497,11 @@ class HostedProvider(AIProvider):
                             f"{provider_error}"
                         )
 
-                    choices = data.get(
-                        "choices",
-                        [],
+                    choices = (
+                        data.get(
+                            "choices",
+                            [],
+                        )
                     )
 
                     if not choices:
@@ -441,18 +515,24 @@ class HostedProvider(AIProvider):
                         )
                     )
 
-                    if current_finish_reason:
+                    if (
+                        current_finish_reason
+                    ):
                         finish_reason = (
                             current_finish_reason
                         )
 
-                    delta = choice.get(
-                        "delta",
-                        {},
+                    delta = (
+                        choice.get(
+                            "delta",
+                            {},
+                        )
                     )
 
-                    content = delta.get(
-                        "content"
+                    content = (
+                        delta.get(
+                            "content"
+                        )
                     )
 
                     if content:
@@ -466,19 +546,25 @@ class HostedProvider(AIProvider):
                             received_done,
                         )
 
-        except requests.exceptions.Timeout as error:
+        except (
+            requests.exceptions.Timeout
+        ) as error:
             raise RuntimeError(
                 f"Streaming model {model} "
                 "timed out."
             ) from error
 
-        except requests.exceptions.ConnectionError as error:
+        except (
+            requests.exceptions.ConnectionError
+        ) as error:
             raise RuntimeError(
-                f"Connection failed for "
+                "Connection failed for "
                 f"streaming model {model}."
             ) from error
 
-        except requests.exceptions.HTTPError as error:
+        except (
+            requests.exceptions.HTTPError
+        ) as error:
             detail = (
                 self._safe_error_detail(
                     response
@@ -492,9 +578,11 @@ class HostedProvider(AIProvider):
                 f"{detail}"
             ) from error
 
-        except requests.exceptions.RequestException as error:
+        except (
+            requests.exceptions.RequestException
+        ) as error:
             raise RuntimeError(
-                f"Streaming request failed "
+                "Streaming request failed "
                 f"for model {model}."
             ) from error
 
@@ -516,6 +604,7 @@ class HostedProvider(AIProvider):
 
     def generate_stream(
         self,
+        user_id: str,
         message: str,
         conversation_id: str,
     ) -> Generator[
@@ -523,11 +612,14 @@ class HostedProvider(AIProvider):
         None,
         None,
     ]:
-        messages = self.build_messages(
-            message=message,
-            conversation_id=(
-                conversation_id
-            ),
+        messages = (
+            self.build_messages(
+                user_id=user_id,
+                message=message,
+                conversation_id=(
+                    conversation_id
+                ),
+            )
         )
 
         last_error = None
@@ -546,12 +638,16 @@ class HostedProvider(AIProvider):
                     model=model,
                     messages=messages,
                 ):
-                    if current_finish_reason:
+                    if (
+                        current_finish_reason
+                    ):
                         finish_reason = (
                             current_finish_reason
                         )
 
-                    if current_received_done:
+                    if (
+                        current_received_done
+                    ):
                         received_done = True
 
                     if content:
@@ -581,7 +677,10 @@ class HostedProvider(AIProvider):
                         "maximum output length.*"
                     )
 
-                    full_response += warning
+                    full_response += (
+                        warning
+                    )
+
                     yield warning
 
                     final_response = (
@@ -618,14 +717,20 @@ class HostedProvider(AIProvider):
                     model,
                     finish_reason,
                     received_done,
-                    len(final_response),
+                    len(
+                        final_response
+                    ),
                 )
 
                 self.save_conversation(
+                    user_id=user_id,
+
                     user_message=message,
+
                     assistant_message=(
                         final_response
                     ),
+
                     conversation_id=(
                         conversation_id
                     ),
@@ -652,14 +757,22 @@ class HostedProvider(AIProvider):
                         "to continue.*"
                     )
 
-                    full_response += warning
+                    full_response += (
+                        warning
+                    )
+
                     yield warning
 
                     self.save_conversation(
+                        user_id=user_id,
+
                         user_message=message,
+
                         assistant_message=(
-                            full_response.strip()
+                            full_response
+                            .strip()
                         ),
+
                         conversation_id=(
                             conversation_id
                         ),
@@ -678,6 +791,117 @@ class HostedProvider(AIProvider):
 
         logger.error(
             "All hosted streaming "
+            "models failed."
+        )
+
+        raise RuntimeError(
+            "All available AI models "
+            "are temporarily unavailable."
+        ) from last_error
+
+    def generate_public_stream(
+        self,
+        messages: list[dict],
+    ) -> Generator[str, None, None]:
+        last_error = None
+
+        for model in self._models():
+            full_response = ""
+            finish_reason = None
+            received_done = False
+
+            try:
+                for (
+                    content,
+                    current_finish_reason,
+                    current_received_done,
+                ) in self._stream_model(
+                    model=model,
+                    messages=messages,
+                    max_tokens=700,
+                ):
+                    if current_finish_reason:
+                        finish_reason = (
+                            current_finish_reason
+                        )
+
+                    if current_received_done:
+                        received_done = True
+
+                    if content:
+                        full_response += content
+                        yield content
+
+                final_response = (
+                    full_response.strip()
+                )
+
+                if not final_response:
+                    raise RuntimeError(
+                        f"Model {model} "
+                        "returned no text."
+                    )
+
+                if finish_reason == "length":
+                    warning = (
+                        "\n\n"
+                        "*Demo response reached "
+                        "the maximum length.*"
+                    )
+                    yield warning
+
+                elif (
+                    not received_done
+                    and finish_reason is None
+                ):
+                    logger.warning(
+                        "Hosted public demo "
+                        "stream ended without "
+                        "[DONE] or finish reason. "
+                        "model=%s",
+                        model,
+                    )
+
+                logger.info(
+                    "Hosted public demo stream "
+                    "completed. model=%s "
+                    "characters=%s",
+                    model,
+                    len(final_response),
+                )
+
+                return
+
+            except RuntimeError as error:
+                last_error = error
+
+                if full_response:
+                    logger.exception(
+                        "Hosted public demo stream "
+                        "failed after output started. "
+                        "model=%s",
+                        model,
+                    )
+
+                    yield (
+                        "\n\n"
+                        "*The AI connection ended "
+                        "unexpectedly. Please try "
+                        "again.*"
+                    )
+                    return
+
+                logger.warning(
+                    "Hosted public demo model "
+                    "failed before output. "
+                    "Trying fallback. "
+                    "model=%s error=%s",
+                    model,
+                    error,
+                )
+
+        logger.error(
+            "All hosted public demo "
             "models failed."
         )
 

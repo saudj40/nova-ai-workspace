@@ -23,20 +23,31 @@ provider = create_provider()
 
 
 def generate_response(
+    user_id: str,
     message: str,
     conversation_id: str,
 ) -> str:
     return provider.generate(
+        user_id=user_id,
         message=message,
         conversation_id=conversation_id,
     )
 
 
 def stream_response(
+    user_id: str,
     message: str,
     conversation_id: str,
 ) -> Generator[str, None, None]:
     return provider.generate_stream(
+        user_id=user_id,
         message=message,
         conversation_id=conversation_id,
+    )
+
+def stream_public_response(
+    messages: list[dict],
+) -> Generator[str, None, None]:
+    return provider.generate_public_stream(
+        messages=messages
     )

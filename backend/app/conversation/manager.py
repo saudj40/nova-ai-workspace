@@ -25,11 +25,11 @@ class ConversationManager:
 
     def build_messages(
         self,
+        user_id: str,
         user_message: str,
-        conversation_id: str = "default",
+        conversation_id: str,
         document_context: str | None = None,
     ) -> list[dict]:
-
         system_content = SYSTEM_PROMPT
 
         if document_context:
@@ -48,7 +48,8 @@ class ConversationManager:
         ]
 
         history = memory.get_messages(
-            conversation_id
+            user_id=user_id,
+            conversation_id=conversation_id,
         )
 
         messages.extend(history)
@@ -62,34 +63,43 @@ class ConversationManager:
 
         return messages
 
+
     def save_user_message(
         self,
+        user_id: str,
         message: str,
-        conversation_id: str = "default",
+        conversation_id: str,
     ) -> None:
         memory.add_message(
+            user_id=user_id,
             conversation_id=conversation_id,
             role="user",
             content=message,
         )
 
+
     def save_assistant_message(
         self,
+        user_id: str,
         message: str,
-        conversation_id: str = "default",
+        conversation_id: str,
     ) -> None:
         memory.add_message(
+            user_id=user_id,
             conversation_id=conversation_id,
             role="assistant",
             content=message,
         )
 
+
     def clear(
         self,
-        conversation_id: str = "default",
+        user_id: str,
+        conversation_id: str,
     ) -> None:
         memory.clear(
-            conversation_id
+            user_id=user_id,
+            conversation_id=conversation_id,
         )
 
 

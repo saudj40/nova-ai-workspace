@@ -14,12 +14,14 @@ class OllamaProvider(AIProvider):
 
     def generate(
         self,
+        user_id: str,
         message: str,
         conversation_id: str,
     ) -> str:
         url = f"{OLLAMA_HOST}/api/chat"
 
         messages = self.build_messages(
+            user_id=user_id,
             message=message,
             conversation_id=conversation_id,
         )
@@ -80,6 +82,7 @@ class OllamaProvider(AIProvider):
             )
 
         self.save_conversation(
+            user_id=user_id,
             user_message=message,
             assistant_message=assistant_response,
             conversation_id=conversation_id,
@@ -87,14 +90,17 @@ class OllamaProvider(AIProvider):
 
         return assistant_response
 
+
     def generate_stream(
         self,
+        user_id: str,
         message: str,
         conversation_id: str,
     ) -> Generator[str, None, None]:
         url = f"{OLLAMA_HOST}/api/chat"
 
         messages = self.build_messages(
+            user_id=user_id,
             message=message,
             conversation_id=conversation_id,
         )
@@ -107,6 +113,106 @@ class OllamaProvider(AIProvider):
             "options": {
                 "temperature": 0.3,
                 "num_predict": 500,
+            },
+        }
+
+        full_response = ""
+
+        try:
+            with requests.post(
+                url,
+                json=payload,
+                stream=True,
+                timeout=(10, 180),
+            ) as response:
+                response.raise_for_status()
+
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+
+                    try:
+                        data = json.loads(
+                            line.decode(
+                                "utf-8"
+                            )
+                        )
+
+                    except json.JSONDecodeError as error:
+                        raise RuntimeError(
+                            "Ollama returned invalid "
+                            "streaming data."
+                        ) from error
+
+                    if data.get("error"):
+                        raise RuntimeError(
+                            data["error"]
+                        )
+
+                    content = (
+                        data.get(
+                            "message",
+                            {},
+                        )
+                        .get(
+                            "content",
+                            "",
+                        )
+                    )
+
+                    if content:
+                        full_response += content
+                        yield content
+
+                    if data.get("done"):
+                        break
+
+        except requests.exceptions.Timeout as error:
+            raise RuntimeError(
+                "Ollama streaming request timed out."
+            ) from error
+
+        except requests.exceptions.ConnectionError as error:
+            raise RuntimeError(
+                "Cannot connect to Ollama. "
+                "Make sure Ollama is running."
+            ) from error
+
+        except requests.exceptions.RequestException as error:
+            raise RuntimeError(
+                "Ollama streaming request "
+                f"failed: {error}"
+            ) from error
+
+        final_response = (
+            full_response.strip()
+        )
+
+        if not final_response:
+            return
+
+        self.save_conversation(
+            user_id=user_id,
+            user_message=message,
+            assistant_message=final_response,
+            conversation_id=conversation_id,
+        )
+
+
+    def generate_public_stream(
+        self,
+        messages: list[dict],
+    ) -> Generator[str, None, None]:
+        url = f"{OLLAMA_HOST}/api/chat"
+
+        payload = {
+            "model": OLLAMA_MODEL,
+            "messages": messages,
+            "stream": True,
+            "keep_alive": "30m",
+            "options": {
+                "temperature": 0.3,
+                "num_predict": 350,
             },
         }
 
@@ -161,7 +267,8 @@ class OllamaProvider(AIProvider):
 
         except requests.exceptions.Timeout as error:
             raise RuntimeError(
-                "Ollama streaming request timed out."
+                "Ollama public demo request "
+                "timed out."
             ) from error
 
         except requests.exceptions.ConnectionError as error:
@@ -172,17 +279,11 @@ class OllamaProvider(AIProvider):
 
         except requests.exceptions.RequestException as error:
             raise RuntimeError(
-                "Ollama streaming request "
+                "Ollama public demo request "
                 f"failed: {error}"
             ) from error
 
-        final_response = full_response.strip()
-
-        if not final_response:
-            return
-
-        self.save_conversation(
-            user_message=message,
-            assistant_message=final_response,
-            conversation_id=conversation_id,
-        )
+        if not full_response.strip():
+            raise RuntimeError(
+                "Ollama returned an empty response."
+            )

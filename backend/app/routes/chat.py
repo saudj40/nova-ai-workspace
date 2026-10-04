@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import (
     APIRouter,
-    Header,
+    Depends,
     HTTPException,
     Response,
     status,
@@ -15,6 +15,10 @@ from fastapi.responses import (
 
 from app.conversation.manager import (
     conversation_manager,
+)
+from app.core.auth import (
+    AuthenticatedUser,
+    get_current_user,
 )
 from app.core.session import (
     get_scoped_conversation_id,
@@ -41,12 +45,12 @@ router = APIRouter()
 
 
 def get_conversation_scope(
-    session_id: str,
+    user_id: str,
     conversation_id: str,
 ) -> str:
     try:
         return get_scoped_conversation_id(
-            session_id=session_id,
+            session_id=user_id,
             conversation_id=conversation_id,
         )
 
@@ -58,12 +62,12 @@ def get_conversation_scope(
 
 
 def enforce_chat_rate_limit(
-    session_id: str,
+    user_id: str,
 ) -> None:
     try:
         result = (
             rate_limiter.check_chat_limit(
-                session_id=session_id
+                session_id=user_id
             )
         )
 
@@ -104,11 +108,13 @@ def enforce_chat_rate_limit(
 
 
 def safe_stream_response(
+    user_id: str,
     message: str,
     conversation_id: str,
 ) -> Generator[str, None, None]:
     try:
         yield from stream_response(
+            user_id=user_id,
             message=message,
             conversation_id=conversation_id,
         )
@@ -144,22 +150,18 @@ def safe_stream_response(
 )
 def chat(
     request: ChatRequest,
-    session_id: Annotated[
-        str,
-        Header(
-            alias="X-Nova-Session",
-            min_length=16,
-            max_length=128,
-        ),
+    user: Annotated[
+        AuthenticatedUser,
+        Depends(get_current_user),
     ],
 ):
     enforce_chat_rate_limit(
-        session_id=session_id
+        user_id=user.id
     )
 
     scoped_conversation_id = (
         get_conversation_scope(
-            session_id=session_id,
+            user_id=user.id,
             conversation_id=(
                 request.conversation_id
             ),
@@ -168,6 +170,7 @@ def chat(
 
     try:
         response = generate_response(
+            user_id=user.id,
             message=request.message,
             conversation_id=(
                 scoped_conversation_id
@@ -210,22 +213,18 @@ def chat(
 )
 def chat_stream(
     request: ChatRequest,
-    session_id: Annotated[
-        str,
-        Header(
-            alias="X-Nova-Session",
-            min_length=16,
-            max_length=128,
-        ),
+    user: Annotated[
+        AuthenticatedUser,
+        Depends(get_current_user),
     ],
 ):
     enforce_chat_rate_limit(
-        session_id=session_id
+        user_id=user.id
     )
 
     scoped_conversation_id = (
         get_conversation_scope(
-            session_id=session_id,
+            user_id=user.id,
             conversation_id=(
                 request.conversation_id
             ),
@@ -234,6 +233,7 @@ def chat_stream(
 
     return StreamingResponse(
         safe_stream_response(
+            user_id=user.id,
             message=request.message,
             conversation_id=(
                 scoped_conversation_id
@@ -258,29 +258,31 @@ def chat_stream(
 )
 def delete_conversation(
     conversation_id: str,
-    session_id: Annotated[
-        str,
-        Header(
-            alias="X-Nova-Session",
-            min_length=16,
-            max_length=128,
-        ),
+    user: Annotated[
+        AuthenticatedUser,
+        Depends(get_current_user),
     ],
 ):
     scoped_conversation_id = (
         get_conversation_scope(
-            session_id=session_id,
+            user_id=user.id,
             conversation_id=conversation_id,
         )
     )
 
     try:
         conversation_manager.clear(
-            scoped_conversation_id
+            user_id=user.id,
+            conversation_id=(
+                scoped_conversation_id
+            ),
         )
 
         document_service.delete_conversation_documents(
-            scoped_conversation_id
+            user_id=user.id,
+            conversation_id=(
+                scoped_conversation_id
+            ),
         )
 
     except Exception as error:

@@ -1,0 +1,106 @@
+﻿.nova-brand {
+  --nova-brand-champagne: #f5f1e9;
+  --nova-brand-muted: #8d8880;
+
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  color: var(--nova-brand-champagne);
+  line-height: 1;
+  user-select: none;
+}
+
+.nova-brand--xs {
+  gap: 7px;
+}
+
+.nova-brand--sm {
+  gap: 8px;
+}
+
+.nova-brand--md {
+  gap: 10px;
+}
+
+.nova-brand--lg {
+  gap: 12px;
+}
+
+.nova-brand__mark {
+  display: block;
+  flex: 0 0 auto;
+  overflow: visible;
+  filter: drop-shadow(0 0 10px rgba(237, 154, 90, 0.08));
+}
+
+.nova-brand__copy {
+  display: inline-flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+}
+
+.nova-brand__word {
+  display: block;
+  color: var(--nova-brand-champagne);
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-weight: 550;
+  letter-spacing: -0.035em;
+  line-height: 0.95;
+  white-space: nowrap;
+}
+
+.nova-brand__subtitle {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--nova-brand-muted);
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.015em;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nova-brand--xs .nova-brand__word {
+  font-size: 16px;
+}
+
+.nova-brand--sm .nova-brand__word {
+  font-size: 18px;
+}
+
+.nova-brand--md .nova-brand__word {
+  font-size: 22px;
+}
+
+.nova-brand--lg .nova-brand__word {
+  font-size: 28px;
+}
+
+.nova-brand--xs .nova-brand__subtitle,
+.nova-brand--sm .nova-brand__subtitle {
+  font-size: 10px;
+}
+
+.nova-brand--md .nova-brand__subtitle {
+  font-size: 11px;
+}
+
+.nova-brand--lg .nova-brand__subtitle {
+  font-size: 12px;
+}
+
+.nova-brand--icon-only {
+  justify-content: center;
+  gap: 0;
+}
+
+@media (max-width: 639px) {
+  .nova-brand--md .nova-brand__word {
+    font-size: 20px;
+  }
+}
