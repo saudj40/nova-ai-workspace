@@ -1,58 +1,30 @@
+import { supabase } from "../lib/supabase";
+
 const API_URL =
   import.meta.env.VITE_API_URL ||
   "http://127.0.0.1:8000";
 
 
-const SESSION_STORAGE_KEY =
-  "nova-session-id";
-
-
-function createSessionId() {
-  if (
-    globalThis.crypto?.randomUUID
-  ) {
-    return crypto.randomUUID();
-  }
-
-  return [
-    Date.now().toString(36),
-    Math.random()
-      .toString(36)
-      .slice(2),
-    Math.random()
-      .toString(36)
-      .slice(2),
-  ].join("-");
-}
-
-
-function getNovaSessionId() {
-  let sessionId =
-    localStorage.getItem(
-      SESSION_STORAGE_KEY
-    );
-
-  if (!sessionId) {
-    sessionId =
-      createSessionId();
-
-    localStorage.setItem(
-      SESSION_STORAGE_KEY,
-      sessionId
-    );
-  }
-
-  return sessionId;
-}
-
-
-function getSessionHeaders(
+async function getAuthenticatedHeaders(
   extraHeaders = {}
 ) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const accessToken =
+    session?.access_token;
+
+  if (!accessToken) {
+    throw new Error(
+      "Please sign in to continue."
+    );
+  }
+
   return {
     ...extraHeaders,
-    "X-Nova-Session":
-      getNovaSessionId(),
+    Authorization:
+      `Bearer ${accessToken}`,
   };
 }
 
@@ -199,6 +171,13 @@ function getFriendlyErrorMessage(
   response,
   fallbackMessage
 ) {
+  if (response.status === 401) {
+    return (
+      "Your session has expired. "
+      + "Please sign in again."
+    );
+  }
+
   if (response.status === 429) {
     const retryAfter =
       response.headers.get(
@@ -295,7 +274,7 @@ export async function streamMessage(
         method: "POST",
 
         headers:
-          getSessionHeaders({
+          await getAuthenticatedHeaders({
             "Content-Type":
               "application/json",
           }),
@@ -438,6 +417,163 @@ export async function streamMessage(
 }
 
 
+export async function streamDemoMessage(
+  message,
+  context,
+  onChunk,
+  signal
+) {
+  let response;
+  let smoothWriter;
+
+  try {
+    response = await fetch(
+      `${API_URL}/demo/chat/stream`,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          message,
+          context,
+        }),
+
+        signal,
+      }
+    );
+
+  } catch (error) {
+    if (
+      error.name === "AbortError"
+    ) {
+      throw error;
+    }
+
+    throw new Error(
+      "Nova cannot reach its demo "
+        + "server right now. Check your "
+        + "connection and try again."
+    );
+  }
+
+
+  if (!response.ok) {
+    const errorMessage =
+      await getErrorMessage(
+        response,
+        "Nova could not start "
+          + "the demo response."
+      );
+
+    throw new Error(errorMessage);
+  }
+
+
+  if (!response.body) {
+    throw new Error(
+      "Streaming is not supported "
+        + "by this browser."
+    );
+  }
+
+
+  const reader =
+    response.body.getReader();
+
+  const decoder =
+    new TextDecoder("utf-8");
+
+  smoothWriter =
+    createSmoothWriter(onChunk);
+
+
+  function handleAbort() {
+    smoothWriter.cancel();
+
+    reader.cancel().catch(() => {
+      // Reader may already be closed.
+    });
+  }
+
+
+  signal?.addEventListener(
+    "abort",
+    handleAbort,
+    {
+      once: true,
+    }
+  );
+
+
+  try {
+    while (true) {
+      const { value, done } =
+        await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      const receivedText =
+        decoder.decode(
+          value,
+          {
+            stream: true,
+          }
+        );
+
+      smoothWriter.push(
+        receivedText
+      );
+    }
+
+
+    smoothWriter.push(
+      decoder.decode()
+    );
+
+    smoothWriter.finish();
+
+    await smoothWriter
+      .waitUntilFinished();
+
+  } catch (error) {
+    smoothWriter.cancel();
+
+    if (
+      error.name === "AbortError" ||
+      signal?.aborted
+    ) {
+      throw new DOMException(
+        "Generation stopped",
+        "AbortError"
+      );
+    }
+
+    throw new Error(
+      "Nova's demo response was "
+        + "interrupted. Please try again."
+    );
+
+  } finally {
+    signal?.removeEventListener(
+      "abort",
+      handleAbort
+    );
+
+    try {
+      reader.releaseLock();
+    } catch {
+      // Reader may already be cancelled.
+    }
+  }
+}
+
+
 export async function uploadDocument(
   file,
   conversationId
@@ -464,7 +600,7 @@ export async function uploadDocument(
         method: "POST",
 
         headers:
-          getSessionHeaders(),
+          await getAuthenticatedHeaders(),
 
         body: formData,
       }
@@ -506,7 +642,7 @@ export async function getDocuments(
       )}`,
       {
         headers:
-          getSessionHeaders(),
+          await getAuthenticatedHeaders(),
       }
     );
 
@@ -554,7 +690,7 @@ export async function deleteDocument(
         method: "DELETE",
 
         headers:
-          getSessionHeaders(),
+          await getAuthenticatedHeaders(),
       }
     );
 
@@ -593,7 +729,7 @@ export async function deleteConversation(
         method: "DELETE",
 
         headers:
-          getSessionHeaders(),
+          await getAuthenticatedHeaders(),
       }
     );
 

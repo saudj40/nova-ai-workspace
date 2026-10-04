@@ -10,7 +10,6 @@ import {
   Info,
   Menu,
   PanelLeftClose,
-  Sparkles,
   X,
 } from "lucide-react";
 
@@ -18,6 +17,11 @@ import Sidebar from "./components/Sidebar";
 import WelcomeScreen from "./components/WelcomeScreen";
 import MessageBubble from "./components/MessageBubble";
 import ChatInput from "./components/ChatInput";
+import AuthScreen from "./components/AuthScreen";
+import LandingPage from "./components/LandingPage";
+import NovaLogo from "./components/NovaLogo";
+import { useAuth } from "./context/AuthContext.jsx";
+
 
 import {
   deleteConversation,
@@ -98,7 +102,11 @@ function loadChats() {
 }
 
 
-function App() {
+function NovaWorkspace() {
+  const { user, signOut } = useAuth();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  // existing code continues below
   const initialChatsRef =
     useRef(loadChats());
 
@@ -1265,6 +1273,27 @@ function App() {
   }
 
 
+  async function handleSignOut() {
+    if (isSigningOut) {
+      return;
+    }
+
+    setIsSigningOut(true);
+
+    try {
+      const { error } = await signOut();
+
+      if (error) {
+        showToast(error.message || "Could not log out. Please try again.");
+        setIsSigningOut(false);
+      }
+    } catch (error) {
+      showToast(error?.message || "Could not log out. Please try again.");
+      setIsSigningOut(false);
+    }
+  }
+
+
   return (
     <div className="app-shell">
 
@@ -1425,6 +1454,18 @@ function App() {
           isLoading={
             interfaceLocked
           }
+
+          userEmail={
+            user?.email || ""
+          }
+
+          onSignOut={
+            handleSignOut
+          }
+
+          isSigningOut={
+            isSigningOut
+          }
         />
       </div>
 
@@ -1483,17 +1524,11 @@ function App() {
 
             aria-label="Go to Nova home"
           >
-            <Sparkles
-              size={17}
-            />
-
-            <span>
-              {isHome
-                ? "Nova"
-                : activeChat
-                    ?.title ||
-                  "Nova"}
-            </span>
+            {isHome ? (
+              <NovaLogo size="sm" />
+            ) : (
+              <span>{activeChat?.title || "Nova"}</span>
+            )}
           </button>
 
 
@@ -1605,5 +1640,37 @@ function App() {
   );
 }
 
+
+function App() {
+  const { user, loading } = useAuth();
+  const [showAuth, setShowAuth] = useState(false);
+
+  if (loading) {
+    return (
+      <div className="nova-auth">
+        <div className="nova-auth-shell">
+          <div className="nova-auth-brand">
+            <NovaLogo size="md" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (user) {
+    return <NovaWorkspace />;
+  }
+
+  if (showAuth) {
+    return <AuthScreen />;
+  }
+
+  return (
+    <LandingPage
+      onEnterNova={() => setShowAuth(true)}
+      onSignIn={() => setShowAuth(true)}
+    />
+  );
+}
 
 export default App;

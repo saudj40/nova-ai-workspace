@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   font-family:
     Inter,
     ui-sans-serif,
@@ -36,8 +36,8 @@ body {
 }
 
 ::selection {
-  color: #241309;
-  background: rgba(255, 192, 125, 0.85);
+  color: #0a0a0b;
+  background: rgba(237, 154, 90, 0.85);
 }
 
 ::-webkit-scrollbar {
@@ -51,9 +51,9 @@ body {
 
 ::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: #2b2927;
+  background: rgba(255, 255, 255, 0.065);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #403c38;
+  background: rgba(255, 255, 255, 0.11);
 }

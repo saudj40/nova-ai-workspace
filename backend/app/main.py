@@ -1,7 +1,12 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.auth import (
+    AuthenticatedUser,
+    get_current_user,
+)
 from app.routes.chat import router as chat_router
+from app.routes.demo import router as demo_router
 from app.routes.documents import router as documents_router
 
 
@@ -27,6 +32,7 @@ app.add_middleware(
 
 app.include_router(chat_router)
 app.include_router(documents_router)
+app.include_router(demo_router)
 
 
 @app.get("/")
@@ -35,4 +41,16 @@ def home():
         "message": "Welcome to Nova AI Workspace",
         "status": "online",
         "version": "0.4.0",
+    }
+
+
+@app.get("/auth/me")
+def auth_me(
+    user: AuthenticatedUser = Depends(
+        get_current_user
+    ),
+):
+    return {
+        "id": user.id,
+        "email": user.email,
     }

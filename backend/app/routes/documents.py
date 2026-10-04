@@ -3,15 +3,19 @@ from typing import Annotated
 
 from fastapi import (
     APIRouter,
+    Depends,
     File,
     Form,
-    Header,
     HTTPException,
     Response,
     UploadFile,
     status,
 )
 
+from app.core.auth import (
+    AuthenticatedUser,
+    get_current_user,
+)
 from app.core.session import (
     get_scoped_conversation_id,
 )
@@ -33,12 +37,12 @@ router = APIRouter(
 
 
 def get_conversation_scope(
-    session_id: str,
+    user_id: str,
     conversation_id: str,
 ) -> str:
     try:
         return get_scoped_conversation_id(
-            session_id=session_id,
+            session_id=user_id,
             conversation_id=conversation_id,
         )
 
@@ -50,12 +54,12 @@ def get_conversation_scope(
 
 
 def enforce_upload_rate_limit(
-    session_id: str,
+    user_id: str,
 ) -> None:
     try:
         result = (
             rate_limiter.check_upload_limit(
-                session_id=session_id
+                session_id=user_id
             )
         )
 
@@ -89,16 +93,17 @@ def enforce_upload_rate_limit(
             "another PDF."
         ),
         headers={
-            "Retry-After": str(
-                retry_after
-            ),
+            "Retry-After":
+                str(retry_after),
         },
     )
 
 
 @router.post(
     "/upload",
-    status_code=status.HTTP_201_CREATED,
+    status_code=(
+        status.HTTP_201_CREATED
+    ),
 )
 async def upload_document(
     conversation_id: Annotated[
@@ -109,22 +114,18 @@ async def upload_document(
         UploadFile,
         File(),
     ],
-    session_id: Annotated[
-        str,
-        Header(
-            alias="X-Nova-Session",
-            min_length=16,
-            max_length=128,
-        ),
+    user: Annotated[
+        AuthenticatedUser,
+        Depends(get_current_user),
     ],
 ):
     enforce_upload_rate_limit(
-        session_id=session_id
+        user_id=user.id
     )
 
     scoped_conversation_id = (
         get_conversation_scope(
-            session_id=session_id,
+            user_id=user.id,
             conversation_id=conversation_id,
         )
     )
@@ -146,7 +147,8 @@ async def upload_document(
 
         if (
             len(file_content)
-            > document_service.MAX_FILE_SIZE
+            >
+            document_service.MAX_FILE_SIZE
         ):
             raise HTTPException(
                 status_code=413,
@@ -158,11 +160,16 @@ async def upload_document(
 
         return (
             document_service.save_document(
+                user_id=user.id,
+
                 conversation_id=(
                     scoped_conversation_id
                 ),
+
                 filename=filename,
+
                 content_type=content_type,
+
                 file_content=file_content,
             )
         )
@@ -212,18 +219,14 @@ async def upload_document(
 )
 def get_conversation_documents(
     conversation_id: str,
-    session_id: Annotated[
-        str,
-        Header(
-            alias="X-Nova-Session",
-            min_length=16,
-            max_length=128,
-        ),
+    user: Annotated[
+        AuthenticatedUser,
+        Depends(get_current_user),
     ],
 ):
     scoped_conversation_id = (
         get_conversation_scope(
-            session_id=session_id,
+            user_id=user.id,
             conversation_id=conversation_id,
         )
     )
@@ -231,12 +234,17 @@ def get_conversation_documents(
     try:
         documents = (
             document_service.list_documents(
-                scoped_conversation_id
+                user_id=user.id,
+
+                conversation_id=(
+                    scoped_conversation_id
+                ),
             )
         )
 
         return {
-            "documents": documents,
+            "documents":
+                documents,
         }
 
     except ValueError as error:
@@ -262,23 +270,21 @@ def get_conversation_documents(
 @router.delete(
     "/conversation/{conversation_id}/"
     "{document_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=(
+        status.HTTP_204_NO_CONTENT
+    ),
 )
 def delete_document(
     conversation_id: str,
     document_id: str,
-    session_id: Annotated[
-        str,
-        Header(
-            alias="X-Nova-Session",
-            min_length=16,
-            max_length=128,
-        ),
+    user: Annotated[
+        AuthenticatedUser,
+        Depends(get_current_user),
     ],
 ):
     scoped_conversation_id = (
         get_conversation_scope(
-            session_id=session_id,
+            user_id=user.id,
             conversation_id=conversation_id,
         )
     )
@@ -286,9 +292,12 @@ def delete_document(
     try:
         was_deleted = (
             document_service.delete_document(
+                user_id=user.id,
+
                 conversation_id=(
                     scoped_conversation_id
                 ),
+
                 document_id=document_id,
             )
         )
